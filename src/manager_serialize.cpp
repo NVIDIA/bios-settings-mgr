@@ -104,6 +104,10 @@ void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
         // Cannot read these properties, it could be different version
         lg2::error("Failed to load: {ERROR}", "ERROR", e);
     }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to load: {ERROR}", "ERROR", e);
+    }
 }
 
 void serialize(const Manager& obj, const fs::path& path)

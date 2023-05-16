@@ -417,7 +417,7 @@ void Manager::setBootOptionValues(const BootOptionsType& loaded)
 Manager::BootOrderType Manager::bootOrder(Manager::BootOrderType value)
 {
     auto newValue = Base::bootOrder(value, false);
-    Base::pendingBootOrder(value);
+    Manager::pendingBootOrder(value);
     return newValue;
 }
 

@@ -417,7 +417,11 @@ void Manager::setBootOptionValues(const BootOptionsType& loaded)
 Manager::BootOrderType Manager::bootOrder(Manager::BootOrderType value)
 {
     auto newValue = Base::bootOrder(value, false);
+#ifdef CLEAR_PENDING_BOOTORDER_ON_UPDATE
+    Manager::pendingBootOrder(std::vector<std::string>());
+#else
     Manager::pendingBootOrder(value);
+#endif
     return newValue;
 }
 

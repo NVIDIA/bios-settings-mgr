@@ -61,6 +61,7 @@ class BootOptionDbus : public BootOptionDbusBase
                    const std::string key);
 
     bool enabled(bool value) override;
+    bool pendingEnabled(bool value) override;
     std::string description(std::string value) override;
     std::string displayName(std::string value) override;
     std::string uefiDevicePath(std::string value) override;

@@ -41,8 +41,18 @@ BootOptionDbus::BootOptionDbus(sdbusplus::bus_t& bus, const char* path,
 
 bool BootOptionDbus::enabled(bool value)
 {
-    auto v = BootOptionDbusBase::enabled(value, false);
-    parent.bootOptionValues[key]["Enabled"] = v;
+    auto enabled = BootOptionDbusBase::enabled(value, false);
+    parent.bootOptionValues[key]["Enabled"] = enabled;
+    auto pendingEnabled = BootOptionDbusBase::pendingEnabled(value, false);
+    parent.bootOptionValues[key]["PendingEnabled"] = pendingEnabled;
+    serialize(parent, parent.biosFile);
+    return enabled;
+}
+
+bool BootOptionDbus::pendingEnabled(bool value)
+{
+    auto v = BootOptionDbusBase::pendingEnabled(value, false);
+    parent.bootOptionValues[key]["PendingEnabled"] = v;
     serialize(parent, parent.biosFile);
     return v;
 }

@@ -1,11 +1,11 @@
 project(
     'biosconfig-manager',
     'cpp',
-    meson_version: '>=0.58.0',
+    meson_version: '>=1.1.1',
     default_options: [
         'warning_level=3',
         'werror=true',
-        'cpp_std=c++20',
+        'cpp_std=c++23',
         'buildtype=debugoptimized'
     ],
     license: 'Apache-2.0',
@@ -57,10 +57,9 @@ systemd_system_unit_dir = systemd.get_variable(
     'systemdsystemunitdir',
     pkgconfig_define: ['prefix', get_option('prefix')])
 
-configure_file(
-    copy: true,
-    input: 'service_files/xyz.openbmc_project.biosconfig_manager.service',
+fs = import('fs')
+fs.copyfile(
+    'service_files/xyz.openbmc_project.biosconfig_manager.service',
     install: true,
-    install_dir: systemd_system_unit_dir,
-    output: 'xyz.openbmc_project.biosconfig_manager.service'
+    install_dir: systemd_system_unit_dir
 )

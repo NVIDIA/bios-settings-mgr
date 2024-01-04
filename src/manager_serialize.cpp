@@ -32,6 +32,17 @@ void save(Archive& archive, const Manager& entry,
                 pendingAttributes(),
             entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
                 enableAfterReset());
+    archive(entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::
+                BootOrder::bootOrder());
+    archive(entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::
+                BootOrder::pendingBootOrder());
+    archive(entry.getBootOptionValues());
+    archive(entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::
+                SecureBoot::currentBoot());
+    archive(entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::
+                SecureBoot::enable());
+    archive(entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::
+                SecureBoot::mode());
 }
 
 /** @brief Function required by Cereal to perform deserialization.
@@ -56,6 +67,47 @@ void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
         pendingAttributes(pendingAttrs, true);
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
         enableAfterReset(enableAfterResetFlag, true);
+
+    try
+    {
+        Manager::BootOrderType bootOrderValue;
+        archive(bootOrderValue);
+        entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::BootOrder::
+            bootOrder(bootOrderValue, true);
+
+        Manager::BootOrderType pendingBootOrderValue;
+        archive(pendingBootOrderValue);
+        entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::BootOrder::
+            pendingBootOrder(pendingBootOrderValue, true);
+
+        Manager::BootOptionsType bootOptionsValues;
+        archive(bootOptionsValues);
+        entry.setBootOptionValues(bootOptionsValues);
+
+        Manager::CurrentBootType currentBootValue;
+        archive(currentBootValue);
+        entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::SecureBoot::
+            currentBoot(currentBootValue, true);
+
+        bool enableValue;
+        archive(enableValue);
+        entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::SecureBoot::
+            enable(enableValue, true);
+
+        Manager::ModeType modeValue;
+        archive(modeValue);
+        entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::SecureBoot::
+            mode(modeValue, true);
+    }
+    catch (cereal::Exception& e)
+    {
+        // Cannot read these properties, it could be different version
+        lg2::error("Failed to load: {ERROR}", "ERROR", e);
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to load: {ERROR}", "ERROR", e);
+    }
 }
 
 void serialize(const Manager& obj, const fs::path& path)

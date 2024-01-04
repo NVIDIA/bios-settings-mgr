@@ -25,11 +25,53 @@
 #include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/asio/object_server.hpp>
 
+#include <regex>
+
 namespace bios_config
 {
 
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 using namespace sdbusplus::xyz::openbmc_project::BIOSConfig::Common::Error;
+
+BootOptionDbus::BootOptionDbus(sdbusplus::bus_t& bus, const char* path,
+                               Manager& parent, const std::string key) :
+    BootOptionDbusBase(bus, path),
+    parent(parent), key(key)
+{}
+
+bool BootOptionDbus::enabled(bool value)
+{
+    auto v = BootOptionDbusBase::enabled(value, false);
+    parent.bootOptionValues[key]["Enabled"] = v;
+    serialize(parent, parent.biosFile);
+    return v;
+}
+std::string BootOptionDbus::description(std::string value)
+{
+    auto v = BootOptionDbusBase::description(value, false);
+    parent.bootOptionValues[key]["Description"] = v;
+    serialize(parent, parent.biosFile);
+    return v;
+}
+std::string BootOptionDbus::displayName(std::string value)
+{
+    auto v = BootOptionDbusBase::displayName(value, false);
+    parent.bootOptionValues[key]["DisplayName"] = v;
+    serialize(parent, parent.biosFile);
+    return v;
+}
+std::string BootOptionDbus::uefiDevicePath(std::string value)
+{
+    auto v = BootOptionDbusBase::uefiDevicePath(value, false);
+    parent.bootOptionValues[key]["UefiDevicePath"] = v;
+    serialize(parent, parent.biosFile);
+    return v;
+}
+
+void BootOptionDbus::delete_()
+{
+    parent.deleteBootOption(key);
+}
 
 void Manager::setAttribute(AttributeName attribute, AttributeValue value)
 {
@@ -317,10 +359,103 @@ Manager::PendingAttributes Manager::pendingAttributes(PendingAttributes value)
     return pendingAttrs;
 }
 
+void Manager::createBootOption(std::string id)
+{
+    const std::regex illegalDbusRegex("[^A-Za-z0-9_]");
+    const std::string key = std::regex_replace(id, illegalDbusRegex, "_");
+    if (bootOptionValues.contains(key))
+    {
+        throw InvalidArgument();
+    }
+
+    std::string path = std::string(bootOptionsPath) + "/" + key;
+    bootOptionValues[key] = {{"Enabled", true},
+                             {"Description", ""},
+                             {"DisplayName", ""},
+                             {"UefiDevicePath", ""}};
+    dbusBootOptions[key] =
+        std::make_unique<BootOptionDbus>(*systemBus, path.c_str(), *this, key);
+    for (const auto& v : bootOptionValues[key])
+    {
+        dbusBootOptions[key]->BootOptionDbusBase::setPropertyByName(v.first,
+                                                                    v.second);
+    }
+
+    serialize(*this, biosFile);
+}
+
+void Manager::deleteBootOption(const std::string& key)
+{
+    bootOptionValues.erase(key);
+    dbusBootOptions.erase(key);
+
+    serialize(*this, biosFile);
+}
+
+Manager::BootOptionsType Manager::getBootOptionValues() const
+{
+    return bootOptionValues;
+}
+
+void Manager::setBootOptionValues(const BootOptionsType& loaded)
+{
+    bootOptionValues = loaded;
+    dbusBootOptions.clear();
+    for (const auto& [key, values] : bootOptionValues)
+    {
+        std::string path = std::string(bootOptionsPath) + "/" + key;
+        dbusBootOptions[key] = std::make_unique<BootOptionDbus>(
+            *systemBus, path.c_str(), *this, key);
+        for (const auto& v : values)
+        {
+            dbusBootOptions[key]->BootOptionDbusBase::setPropertyByName(
+                v.first, v.second);
+        }
+    }
+}
+
+Manager::BootOrderType Manager::bootOrder(Manager::BootOrderType value)
+{
+    auto newValue = Base::bootOrder(value, false);
+#ifdef CLEAR_PENDING_BOOTORDER_ON_UPDATE
+    Manager::pendingBootOrder(std::vector<std::string>());
+#else
+    Manager::pendingBootOrder(value);
+#endif
+    return newValue;
+}
+
+Manager::BootOrderType Manager::pendingBootOrder(Manager::BootOrderType value)
+{
+    auto newValue = Base::pendingBootOrder(value, false);
+    serialize(*this, biosFile);
+    return newValue;
+}
+
+Manager::CurrentBootType Manager::currentBoot(Manager::CurrentBootType value)
+{
+    auto newValue = Base::currentBoot(value, false);
+    serialize(*this, biosFile);
+    return newValue;
+}
+
+bool Manager::enable(bool value)
+{
+    auto newValue = Base::enable(value, false);
+    serialize(*this, biosFile);
+    return newValue;
+}
+
+Manager::ModeType Manager::mode(Manager::ModeType value)
+{
+    auto newValue = Base::mode(value, false);
+    serialize(*this, biosFile);
+    return newValue;
+}
+
 Manager::Manager(sdbusplus::asio::object_server& objectServer,
                  std::shared_ptr<sdbusplus::asio::connection>& systemBus) :
-    sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager(*systemBus,
-                                                                 objectPath),
+    bios_config::Base(*systemBus, objectPath),
     objServer(objectServer), systemBus(systemBus)
 {
     fs::path biosDir(BIOS_PERSIST_PATH);

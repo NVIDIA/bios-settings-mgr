@@ -19,7 +19,11 @@
 
 #include <sdbusplus/asio/object_server.hpp>
 #include <sdbusplus/server.hpp>
+#include <xyz/openbmc_project/BIOSConfig/BootOption/server.hpp>
+#include <xyz/openbmc_project/BIOSConfig/BootOrder/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/Manager/server.hpp>
+#include <xyz/openbmc_project/BIOSConfig/SecureBoot/server.hpp>
+#include <xyz/openbmc_project/Object/Delete/server.hpp>
 
 #include <filesystem>
 #include <string>
@@ -30,9 +34,43 @@ namespace bios_config
 static constexpr auto service = "xyz.openbmc_project.BIOSConfigManager";
 static constexpr auto objectPath = "/xyz/openbmc_project/bios_config/manager";
 constexpr auto biosPersistFile = "biosData";
-
-using Base = sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager;
+static constexpr auto bootOptionsPath =
+    "/xyz/openbmc_project/bios_config/bootOptions";
+using Base = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager,
+    sdbusplus::xyz::openbmc_project::BIOSConfig::server::BootOrder,
+    sdbusplus::xyz::openbmc_project::BIOSConfig::server::SecureBoot>;
+using BootOptionDbusBase = sdbusplus::server::object_t<
+    sdbusplus::xyz::openbmc_project::BIOSConfig::server::BootOption,
+    sdbusplus::xyz::openbmc_project::Object::server::Delete>;
 namespace fs = std::filesystem;
+
+class Manager;
+
+class BootOptionDbus : public BootOptionDbusBase
+{
+  public:
+    /** @brief Constructs BootOptionDbus object.
+     *
+     *  @param[in] bus - Bus to attach to.
+     *  @param[in] path - Path to attach at.
+     *  @param[in] parent - Reference of parent.
+     *  @param[in] key - Key of this object.
+     */
+    BootOptionDbus(sdbusplus::bus_t& bus, const char* path, Manager& parent,
+                   const std::string key);
+
+    bool enabled(bool value) override;
+    std::string description(std::string value) override;
+    std::string displayName(std::string value) override;
+    std::string uefiDevicePath(std::string value) override;
+
+    void delete_() override;
+
+  private:
+    Manager& parent;
+    const std::string key;
+};
 
 /** @class Manager
  *
@@ -65,6 +103,10 @@ class Manager : public Base
     using PendingValue = std::variant<int64_t, std::string>;
     using AttributeDetails =
         std::tuple<AttributeType, CurrentValue, PendingValue>;
+    using BootOrderType = std::vector<std::string>;
+    using BootOptionDataType =
+        std::map<std::string, BootOptionDbus::PropertiesVariant>;
+    using BootOptionsType = std::map<std::string, BootOptionDataType>;
 
     Manager() = delete;
     ~Manager() = default;
@@ -126,6 +168,43 @@ class Manager : public Base
      */
     PendingAttributes pendingAttributes(PendingAttributes value) override;
 
+    /** @brief Implementation for CreateBootOption To create a new DBus object
+     *  with BootOption DBus interface and using the Id as the object name.
+     *
+     *  @param[in] id - The unique boot option ID.
+     *
+     *  @return On error, throw exception
+     */
+    void createBootOption(std::string id) override;
+
+    void deleteBootOption(const std::string& key);
+    BootOptionsType getBootOptionValues() const;
+    void setBootOptionValues(const BootOptionsType& loaded);
+
+    /** @brief Set the BootOrder property, additionally set it to the
+     *  PendingBootOrder property. The PendingBootOrder is the future settings
+     *  of BootOrder, reset PendingBootOrder as BootOrder when the BootOrder is
+     *  updated.
+     *
+     *  @param[in] value - new BootOrder value
+     *
+     *  @return On success, return the new BootOrder
+     */
+    BootOrderType bootOrder(BootOrderType value) override;
+
+    /** @brief serialize to file after changing value
+     *
+     *  @param[in] value - new value
+     *
+     *  @return On success, return the new value
+     */
+    BootOrderType pendingBootOrder(BootOrderType value) override;
+    CurrentBootType currentBoot(CurrentBootType value) override;
+    bool enable(bool value) override;
+    ModeType mode(ModeType value) override;
+
+    friend class BootOptionDbus;
+
   private:
     /** @enum Index into the fields in the BaseBIOSTable
      */
@@ -162,6 +241,8 @@ class Manager : public Base
     sdbusplus::asio::object_server& objServer;
     std::shared_ptr<sdbusplus::asio::connection>& systemBus;
     std::filesystem::path biosFile;
+    BootOptionsType bootOptionValues;
+    std::map<std::string, std::unique_ptr<BootOptionDbus>> dbusBootOptions;
 };
 
 } // namespace bios_config

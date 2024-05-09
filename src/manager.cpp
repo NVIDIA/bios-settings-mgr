@@ -35,8 +35,7 @@ using namespace sdbusplus::xyz::openbmc_project::BIOSConfig::Common::Error;
 
 BootOptionDbus::BootOptionDbus(sdbusplus::bus_t& bus, const char* path,
                                Manager& parent, const std::string key) :
-    BootOptionDbusBase(bus, path),
-    parent(parent), key(key)
+    BootOptionDbusBase(bus, path), parent(parent), key(key)
 {}
 
 bool BootOptionDbus::enabled(bool value)
@@ -465,8 +464,8 @@ Manager::ModeType Manager::mode(Manager::ModeType value)
 
 Manager::Manager(sdbusplus::asio::object_server& objectServer,
                  std::shared_ptr<sdbusplus::asio::connection>& systemBus) :
-    bios_config::Base(*systemBus, objectPath),
-    objServer(objectServer), systemBus(systemBus)
+    bios_config::Base(*systemBus, objectPath), objServer(objectServer),
+    systemBus(systemBus)
 {
     fs::path biosDir(BIOS_PERSIST_PATH);
     fs::create_directories(biosDir);

@@ -27,6 +27,7 @@
 
 #include <filesystem>
 #include <string>
+#define BIOS_CONFIG_VERSION 2
 
 namespace bios_config
 {
@@ -88,6 +89,14 @@ class Manager : public Base
             std::variant<int64_t, std::string>,
             std::vector<std::tuple<
                 BoundType, std::variant<int64_t, std::string>, std::string>>>>;
+
+    using BaseTableV1 = std::map<
+        std::string,
+        std::tuple<AttributeType, bool, std::string, std::string, std::string,
+            std::variant<int64_t, std::string>,
+            std::variant<int64_t, std::string>,
+            std::vector<std::tuple<
+                       BoundType, std::variant<int64_t, std::string>>>>>;
 
     using ResetFlag = std::map<std::string, ResetFlag>;
 
@@ -205,6 +214,8 @@ class Manager : public Base
     ModeType mode(ModeType value) override;
 
     friend class BootOptionDbus;
+
+    BaseTable convertBaseTableV1ToBaseTable(const Manager::BaseTableV1& tableV1);
 
   private:
     /** @enum Index into the fields in the BaseBIOSTable

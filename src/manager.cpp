@@ -473,4 +473,55 @@ Manager::Manager(sdbusplus::asio::object_server& objectServer,
     deserialize(biosFile, *this);
 }
 
+// Utility function to convert BaseTableV1 to BaseTable
+Manager::BaseTable Manager::convertBaseTableV1ToBaseTable(const Manager::BaseTableV1& tableV1) {
+    Manager::BaseTable table;
+
+    for (const auto& [key, tupleV1] : tableV1) {
+        // Extract fields from tupleV1
+        AttributeType attrType = std::get<0>(tupleV1);
+        bool boolValue = std::get<1>(tupleV1);
+        std::string str1 = std::get<2>(tupleV1);
+        std::string str2 = std::get<3>(tupleV1);
+        std::string str3 = std::get<4>(tupleV1);
+        std::variant<int64_t, std::string> var1 = std::get<5>(tupleV1);
+        std::variant<int64_t, std::string> var2 = std::get<6>(tupleV1);
+        std::vector<std::tuple<BoundType, std::variant<int64_t, std::string>>> vecV1 = std::get<7>(tupleV1);
+
+        // Create the corresponding tuple for BaseTable with additional fields set to default values
+        std::tuple<
+            AttributeType, bool, std::string, std::string, std::string,
+            std::variant<int64_t, std::string>,
+            std::variant<int64_t, std::string>,
+            std::vector<std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>> tuple;
+
+        // Copy existing fields
+        std::get<0>(tuple) = attrType;
+        std::get<1>(tuple) = boolValue;
+        std::get<2>(tuple) = str1;
+        std::get<3>(tuple) = str2;
+        std::get<4>(tuple) = str3;
+        std::get<5>(tuple) = var1;
+        std::get<6>(tuple) = var2;
+
+        // Copy vector with additional fields set to default values
+        std::vector<std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>> vec;
+
+        for (const auto& entry : vecV1) {
+            BoundType boundType = std::get<0>(entry);
+            std::variant<int64_t, std::string> var = std::get<1>(entry);
+            vec.emplace_back(boundType, var, "");
+        }
+
+        tuple = std::make_tuple(
+            attrType, boolValue, str1, str2, str3,
+            var1, var2, vec);
+
+        // Insert into the new BaseTable
+        table[key] = tuple;
+    }
+
+    return table;
+}
+
 } // namespace bios_config

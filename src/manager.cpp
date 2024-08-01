@@ -18,7 +18,6 @@
 #include "manager_serialize.hpp"
 #include "xyz/openbmc_project/BIOSConfig/Common/error.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
-
 #include <boost/asio.hpp>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/lg2.hpp>
@@ -26,6 +25,7 @@
 #include <sdbusplus/asio/object_server.hpp>
 
 #include <regex>
+#include "utility.hpp"
 
 namespace bios_config
 {
@@ -158,6 +158,19 @@ bool Manager::enableAfterReset(bool value)
     auto enableAfterResetFlag = Base::enableAfterReset(value, false);
     serialize(*this, biosFile);
     return enableAfterResetFlag;
+}
+sdbusplus::common::xyz::openbmc_project::bios_config::Manager::ResetFlag
+Manager::resetBIOSSettings(sdbusplus::common::xyz::openbmc_project::bios_config::Manager::ResetFlag value)
+{
+    auto resetFlag = Base::resetBIOSSettings(value, false);
+    serialize(*this, biosFile);
+
+    // Below block of code is to send event when ResetBIOSSettings property is modified.
+    std::string resetFlagString = convertResetFlagToString(resetFlag);
+    std::string path = objectPath;
+                path += "/bios/settings";
+    parsePropertyValueAndSendEvent("ResetBIOSSettings", resetFlagString, path);
+    return resetFlag;
 }
 
 bool Manager::validateEnumOption(
@@ -445,6 +458,11 @@ Manager::CurrentBootType Manager::currentBoot(Manager::CurrentBootType value)
 {
     auto newValue = Base::currentBoot(value, false);
     serialize(*this, biosFile);
+    using namespace phosphor::logging;
+    // Below block of code is to send event when CurrentBoot property is modified.
+    std::string bootType = convertCurrentBootTypeToString(value);
+    parsePropertyValueAndSendEvent("ScureCurrentBoot", bootType, objectPath);
+
     return newValue;
 }
 
@@ -452,6 +470,7 @@ bool Manager::enable(bool value)
 {
     auto newValue = Base::enable(value, false);
     serialize(*this, biosFile);
+    sendRedfishEvent("SecureBootEnable", std::to_string(value), objectPath);
     return newValue;
 }
 
@@ -459,6 +478,10 @@ Manager::ModeType Manager::mode(Manager::ModeType value)
 {
     auto newValue = Base::mode(value, false);
     serialize(*this, biosFile);
+    using namespace phosphor::logging;
+    // Below block of code is to send event when SecureBootMode property is modified.
+    std::string modeType = convertModeTypeToString(value);
+    parsePropertyValueAndSendEvent("SecureBootMode", modeType, objectPath);
     return newValue;
 }
 

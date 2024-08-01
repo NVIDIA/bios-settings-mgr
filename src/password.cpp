@@ -27,6 +27,7 @@
 
 #include <fstream>
 #include <iostream>
+#include "utility.hpp"
 
 namespace bios_config_pwd
 {
@@ -227,6 +228,8 @@ void Password::changePassword(std::string userName, std::string currentPassword,
         const auto& writeData = json.dump();
         ofs << writeData;
         ofs.close();
+        // send redfish event
+        bios_config::sendRedfishEvent("BiosPassword", "****", objectPathPwd);
     }
     else
     {

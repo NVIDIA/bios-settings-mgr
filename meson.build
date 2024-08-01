@@ -62,7 +62,9 @@ deps += cereal
 src_files = ['src/main.cpp',
              'src/manager.cpp',
              'src/manager_serialize.cpp',
-             'src/password.cpp'
+             'src/password.cpp',
+             'src/utility.cpp'
+
 ]
 
 executable('biosconfig-manager',

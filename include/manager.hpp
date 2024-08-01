@@ -21,6 +21,7 @@
 #include <sdbusplus/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/BootOption/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/BootOrder/server.hpp>
+#include <xyz/openbmc_project/BIOSConfig/Manager/common.hpp>
 #include <xyz/openbmc_project/BIOSConfig/Manager/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/SecureBoot/server.hpp>
 #include <xyz/openbmc_project/Object/Delete/server.hpp>
@@ -98,7 +99,7 @@ class Manager : public Base
             std::vector<std::tuple<
                        BoundType, std::variant<int64_t, std::string>>>>>;
 
-    using ResetFlag = std::map<std::string, ResetFlag>;
+    //using ResetFlag = std::map<std::string, ResetFlag>;
 
     using PendingAttributes =
         std::map<std::string,
@@ -163,7 +164,7 @@ class Manager : public Base
 
     bool enableAfterReset(bool value) override;
 
-    ResetFlag resetBIOSSettings(ResetFlag value);
+    ResetFlag resetBIOSSettings(ResetFlag value) override;
 
     /** @brief Set the PendingAttributes property, additionally checks if the
      *         attributes are in the BaseBIOSTable, whether the attributes are

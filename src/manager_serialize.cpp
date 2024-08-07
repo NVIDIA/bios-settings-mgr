@@ -14,13 +14,14 @@
 namespace bios_config
 {
 
-// BIOS_CONFIG_VERSION is introduced to manage backward compatibility with 
+// BIOS_CONFIG_VERSION is introduced to manage backward compatibility with
 // old BaseTableV1 where had not added the support version flag in the archived
-// data itself. To manage this the deserialize will try to decode with BaseTableV1
-// when there is exception to read the version itself. If the version in the 
-// archive is been read correctly then next version checks will be handled.  
-//  BaseTable - Maps to Version 2 
-//  BaseTableV1 - Maps to version 1 
+// data itself. To manage this the deserialize will try to decode with
+// BaseTableV1 when there is exception to read the version itself. If the
+// version in the archive is been read correctly then next version checks will
+// be handled.
+//  BaseTable - Maps to Version 2
+//  BaseTableV1 - Maps to version 1
 
 static std::uint32_t currentVersion = BIOS_CONFIG_VERSION;
 

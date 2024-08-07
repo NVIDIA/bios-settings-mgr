@@ -94,12 +94,12 @@ class Manager : public Base
     using BaseTableV1 = std::map<
         std::string,
         std::tuple<AttributeType, bool, std::string, std::string, std::string,
-            std::variant<int64_t, std::string>,
-            std::variant<int64_t, std::string>,
-            std::vector<std::tuple<
+                   std::variant<int64_t, std::string>,
+                   std::variant<int64_t, std::string>,
+                   std::vector<std::tuple<
                        BoundType, std::variant<int64_t, std::string>>>>>;
 
-    //using ResetFlag = std::map<std::string, ResetFlag>;
+    // using ResetFlag = std::map<std::string, ResetFlag>;
 
     using PendingAttributes =
         std::map<std::string,
@@ -216,7 +216,8 @@ class Manager : public Base
 
     friend class BootOptionDbus;
 
-    BaseTable convertBaseTableV1ToBaseTable(const Manager::BaseTableV1& tableV1);
+    BaseTable
+        convertBaseTableV1ToBaseTable(const Manager::BaseTableV1& tableV1);
 
   private:
     /** @enum Index into the fields in the BaseBIOSTable

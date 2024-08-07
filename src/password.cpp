@@ -15,6 +15,7 @@
 */
 #include "password.hpp"
 
+#include "rfutility.hpp"
 #include "xyz/openbmc_project/BIOSConfig/Common/error.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
 
@@ -27,7 +28,6 @@
 
 #include <fstream>
 #include <iostream>
-#include "utility.hpp"
 
 namespace bios_config_pwd
 {

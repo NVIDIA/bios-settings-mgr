@@ -21,12 +21,14 @@
 #include <sdbusplus/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/BootOption/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/BootOrder/server.hpp>
+#include <xyz/openbmc_project/BIOSConfig/Manager/common.hpp>
 #include <xyz/openbmc_project/BIOSConfig/Manager/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/SecureBoot/server.hpp>
 #include <xyz/openbmc_project/Object/Delete/server.hpp>
 
 #include <filesystem>
 #include <string>
+#define BIOS_CONFIG_VERSION 2
 
 namespace bios_config
 {
@@ -89,7 +91,15 @@ class Manager : public Base
             std::vector<std::tuple<
                 BoundType, std::variant<int64_t, std::string>, std::string>>>>;
 
-    using ResetFlag = std::map<std::string, ResetFlag>;
+    using BaseTableV1 = std::map<
+        std::string,
+        std::tuple<AttributeType, bool, std::string, std::string, std::string,
+                   std::variant<int64_t, std::string>,
+                   std::variant<int64_t, std::string>,
+                   std::vector<std::tuple<
+                       BoundType, std::variant<int64_t, std::string>>>>>;
+
+    // using ResetFlag = std::map<std::string, ResetFlag>;
 
     using PendingAttributes =
         std::map<std::string,
@@ -154,7 +164,7 @@ class Manager : public Base
 
     bool enableAfterReset(bool value) override;
 
-    ResetFlag resetBIOSSettings(ResetFlag value);
+    ResetFlag resetBIOSSettings(ResetFlag value) override;
 
     /** @brief Set the PendingAttributes property, additionally checks if the
      *         attributes are in the BaseBIOSTable, whether the attributes are
@@ -205,6 +215,9 @@ class Manager : public Base
     ModeType mode(ModeType value) override;
 
     friend class BootOptionDbus;
+
+    BaseTable
+        convertBaseTableV1ToBaseTable(const Manager::BaseTableV1& tableV1);
 
   private:
     /** @enum Index into the fields in the BaseBIOSTable

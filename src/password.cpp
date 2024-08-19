@@ -15,6 +15,7 @@
 */
 #include "password.hpp"
 
+#include "rfutility.hpp"
 #include "xyz/openbmc_project/BIOSConfig/Common/error.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
 
@@ -227,6 +228,8 @@ void Password::changePassword(std::string userName, std::string currentPassword,
         const auto& writeData = json.dump();
         ofs << writeData;
         ofs.close();
+        // send redfish event
+        bios_config::sendRedfishEvent("BiosPassword", "****", objectPathPwd);
     }
     else
     {

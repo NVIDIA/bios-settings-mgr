@@ -14,6 +14,17 @@
 namespace bios_config
 {
 
+// BIOS_CONFIG_VERSION is introduced to manage backward compatibility with
+// old BaseTableV1 where had not added the support version flag in the archived
+// data itself. To manage this the deserialize will try to decode with
+// BaseTableV1 when there is exception to read the version itself. If the
+// version in the archive is been read correctly then next version checks will
+// be handled.
+//  BaseTable - Maps to Version 2
+//  BaseTableV1 - Maps to version 1
+
+static std::uint32_t currentVersion = BIOS_CONFIG_VERSION;
+
 /** @brief Function required by Cereal to perform serialization.
  *
  *  @tparam Archive - Cereal archive type (binary in this case).
@@ -26,6 +37,8 @@ template <class Archive>
 void save(Archive& archive, const Manager& entry,
           const std::uint32_t /*version*/)
 {
+    std::uint32_t version = BIOS_CONFIG_VERSION;
+    archive(version);
     archive(entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
                 baseBIOSTable(),
             entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
@@ -57,10 +70,24 @@ template <class Archive>
 void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
 {
     Manager::BaseTable baseTable;
+    Manager::BaseTableV1 baseTableV1;
+
     Manager::PendingAttributes pendingAttrs;
     bool enableAfterResetFlag;
 
-    archive(baseTable, pendingAttrs, enableAfterResetFlag);
+    if (currentVersion == BIOS_CONFIG_VERSION)
+    {
+        std::uint32_t version = 0;
+        archive(version);
+        archive(baseTable, pendingAttrs, enableAfterResetFlag);
+        lg2::info("Bios Config Version: {VERSION}", "VERSION", version);
+    }
+    else
+    {
+        archive(baseTableV1, pendingAttrs, enableAfterResetFlag);
+        baseTable = entry.convertBaseTableV1ToBaseTable(baseTableV1);
+    }
+
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
         baseBIOSTable(baseTable, true);
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
@@ -123,9 +150,21 @@ bool deserialize(const fs::path& path, Manager& entry)
     {
         if (fs::exists(path))
         {
-            std::ifstream is(path.c_str(), std::ios::in | std::ios::binary);
-            cereal::BinaryInputArchive iarchive(is);
-            iarchive(entry);
+            try
+            {
+                std::ifstream is(path.c_str(), std::ios::in | std::ios::binary);
+                cereal::BinaryInputArchive iarchive(is);
+                iarchive(entry);
+            }
+            catch (...)
+            {
+                lg2::error("Trying with old Bios Config Version: {VERSION}",
+                           "VERSION", 1);
+                std::ifstream is(path.c_str(), std::ios::in | std::ios::binary);
+                cereal::BinaryInputArchive iarchive(is);
+                currentVersion = 1;
+                iarchive(entry);
+            }
             return true;
         }
         return false;

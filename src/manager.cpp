@@ -16,6 +16,7 @@
 #include "manager.hpp"
 
 #include "manager_serialize.hpp"
+#include "rfutility.hpp"
 #include "xyz/openbmc_project/BIOSConfig/Common/error.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
 
@@ -35,7 +36,8 @@ using namespace sdbusplus::xyz::openbmc_project::BIOSConfig::Common::Error;
 
 BootOptionDbus::BootOptionDbus(sdbusplus::bus_t& bus, const char* path,
                                Manager& parent, const std::string key) :
-    BootOptionDbusBase(bus, path), parent(parent), key(key)
+    BootOptionDbusBase(bus, path),
+    parent(parent), key(key)
 {}
 
 bool BootOptionDbus::enabled(bool value)
@@ -158,6 +160,22 @@ bool Manager::enableAfterReset(bool value)
     auto enableAfterResetFlag = Base::enableAfterReset(value, false);
     serialize(*this, biosFile);
     return enableAfterResetFlag;
+}
+sdbusplus::common::xyz::openbmc_project::bios_config::Manager::ResetFlag
+    Manager::resetBIOSSettings(
+        sdbusplus::common::xyz::openbmc_project::bios_config::Manager::ResetFlag
+            value)
+{
+    auto resetFlag = Base::resetBIOSSettings(value, false);
+    serialize(*this, biosFile);
+
+    // Below block of code is to send event when ResetBIOSSettings property is
+    // modified.
+    std::string resetFlagString = convertResetFlagToString(resetFlag);
+    std::string path = objectPath;
+    path += "/bios/settings";
+    parsePropertyValueAndSendEvent("ResetBIOSSettings", resetFlagString, path);
+    return resetFlag;
 }
 
 bool Manager::validateEnumOption(
@@ -445,6 +463,12 @@ Manager::CurrentBootType Manager::currentBoot(Manager::CurrentBootType value)
 {
     auto newValue = Base::currentBoot(value, false);
     serialize(*this, biosFile);
+    using namespace phosphor::logging;
+    // Below block of code is to send event when CurrentBoot property is
+    // modified.
+    std::string bootType = convertCurrentBootTypeToString(value);
+    parsePropertyValueAndSendEvent("ScureCurrentBoot", bootType, objectPath);
+
     return newValue;
 }
 
@@ -452,6 +476,7 @@ bool Manager::enable(bool value)
 {
     auto newValue = Base::enable(value, false);
     serialize(*this, biosFile);
+    sendRedfishEvent("SecureBootEnable", std::to_string(value), objectPath);
     return newValue;
 }
 
@@ -459,18 +484,83 @@ Manager::ModeType Manager::mode(Manager::ModeType value)
 {
     auto newValue = Base::mode(value, false);
     serialize(*this, biosFile);
+    using namespace phosphor::logging;
+    // Below block of code is to send event when SecureBootMode property is
+    // modified.
+    std::string modeType = convertModeTypeToString(value);
+    parsePropertyValueAndSendEvent("SecureBootMode", modeType, objectPath);
     return newValue;
 }
 
 Manager::Manager(sdbusplus::asio::object_server& objectServer,
                  std::shared_ptr<sdbusplus::asio::connection>& systemBus) :
-    bios_config::Base(*systemBus, objectPath), objServer(objectServer),
-    systemBus(systemBus)
+    bios_config::Base(*systemBus, objectPath),
+    objServer(objectServer), systemBus(systemBus)
 {
     fs::path biosDir(BIOS_PERSIST_PATH);
     fs::create_directories(biosDir);
     biosFile = biosDir / biosPersistFile;
     deserialize(biosFile, *this);
+}
+
+// Utility function to convert BaseTableV1 to BaseTable
+Manager::BaseTable
+    Manager::convertBaseTableV1ToBaseTable(const Manager::BaseTableV1& tableV1)
+{
+    Manager::BaseTable table;
+
+    for (const auto& [key, tupleV1] : tableV1)
+    {
+        // Extract fields from tupleV1
+        AttributeType attrType = std::get<0>(tupleV1);
+        bool boolValue = std::get<1>(tupleV1);
+        std::string str1 = std::get<2>(tupleV1);
+        std::string str2 = std::get<3>(tupleV1);
+        std::string str3 = std::get<4>(tupleV1);
+        std::variant<int64_t, std::string> var1 = std::get<5>(tupleV1);
+        std::variant<int64_t, std::string> var2 = std::get<6>(tupleV1);
+        std::vector<std::tuple<BoundType, std::variant<int64_t, std::string>>>
+            vecV1 = std::get<7>(tupleV1);
+
+        // Create the corresponding tuple for BaseTable with additional fields
+        // set to default values
+        std::tuple<
+            AttributeType, bool, std::string, std::string, std::string,
+            std::variant<int64_t, std::string>,
+            std::variant<int64_t, std::string>,
+            std::vector<std::tuple<
+                BoundType, std::variant<int64_t, std::string>, std::string>>>
+            tuple;
+
+        // Copy existing fields
+        std::get<0>(tuple) = attrType;
+        std::get<1>(tuple) = boolValue;
+        std::get<2>(tuple) = str1;
+        std::get<3>(tuple) = str2;
+        std::get<4>(tuple) = str3;
+        std::get<5>(tuple) = var1;
+        std::get<6>(tuple) = var2;
+
+        // Copy vector with additional fields set to default values
+        std::vector<std::tuple<BoundType, std::variant<int64_t, std::string>,
+                               std::string>>
+            vec;
+
+        for (const auto& entry : vecV1)
+        {
+            BoundType boundType = std::get<0>(entry);
+            std::variant<int64_t, std::string> var = std::get<1>(entry);
+            vec.emplace_back(boundType, var, "");
+        }
+
+        tuple = std::make_tuple(attrType, boolValue, str1, str2, str3, var1,
+                                var2, vec);
+
+        // Insert into the new BaseTable
+        table[key] = tuple;
+    }
+
+    return table;
 }
 
 } // namespace bios_config

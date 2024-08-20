@@ -10,7 +10,11 @@
 #include <phosphor-logging/lg2.hpp>
 
 #include <fstream>
+#include <map>
+#include <variant>
+#include <vector>
 
+CEREAL_CLASS_VERSION(bios_config::Manager, 1);
 namespace bios_config
 {
 
@@ -34,8 +38,7 @@ static std::uint32_t currentVersion = BIOS_CONFIG_VERSION;
  *                       across code levels
  */
 template <class Archive>
-void save(Archive& archive, const Manager& entry,
-          const std::uint32_t /*version*/)
+void save(Archive& archive, const Manager& entry, const std::uint32_t version)
 {
     std::uint32_t version = BIOS_CONFIG_VERSION;
     archive(version);
@@ -69,8 +72,10 @@ void save(Archive& archive, const Manager& entry,
  *                       across code levels
  */
 template <class Archive>
-void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
+void load(Archive& archive, Manager& entry, const std::uint32_t version)
 {
+    lg2::error("Load is called with version {VER}", "VER", version);
+
     Manager::BaseTable baseTable;
     Manager::BaseTableV1 baseTableV1;
 
@@ -100,6 +105,7 @@ void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
 
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
         baseBIOSTable(baseTable, true);
+
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
         pendingAttributes(pendingAttrs, true);
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::

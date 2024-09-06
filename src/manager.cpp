@@ -161,6 +161,14 @@ bool Manager::enableAfterReset(bool value)
     serialize(*this, biosFile);
     return enableAfterResetFlag;
 }
+
+bool Manager::credentialBootstrap(bool value)
+{
+    auto credentialBootstrapFlag = Base::credentialBootstrap(value, false);
+    serialize(*this, biosFile);
+    return credentialBootstrapFlag;
+}
+
 sdbusplus::common::xyz::openbmc_project::bios_config::Manager::ResetFlag
     Manager::resetBIOSSettings(
         sdbusplus::common::xyz::openbmc_project::bios_config::Manager::ResetFlag

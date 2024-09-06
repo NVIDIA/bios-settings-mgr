@@ -164,6 +164,8 @@ class Manager : public Base
 
     bool enableAfterReset(bool value) override;
 
+    bool credentialBootstrap(bool value) override;
+
     ResetFlag resetBIOSSettings(ResetFlag value) override;
 
     /** @brief Set the PendingAttributes property, additionally checks if the

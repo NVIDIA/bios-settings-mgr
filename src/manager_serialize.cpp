@@ -44,7 +44,9 @@ void save(Archive& archive, const Manager& entry,
             entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
                 pendingAttributes(),
             entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
-                enableAfterReset());
+                enableAfterReset(),
+            entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
+                credentialBootstrap());
     archive(entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::
                 BootOrder::bootOrder());
     archive(entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::
@@ -74,17 +76,20 @@ void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
 
     Manager::PendingAttributes pendingAttrs;
     bool enableAfterResetFlag;
+    bool credentialBootstrapFlag;
 
     if (currentVersion == BIOS_CONFIG_VERSION)
     {
         std::uint32_t version = 0;
         archive(version);
-        archive(baseTable, pendingAttrs, enableAfterResetFlag);
+        archive(baseTable, pendingAttrs, enableAfterResetFlag,
+                credentialBootstrapFlag);
         lg2::info("Bios Config Version: {VERSION}", "VERSION", version);
     }
     else
     {
-        archive(baseTableV1, pendingAttrs, enableAfterResetFlag);
+        archive(baseTableV1, pendingAttrs, enableAfterResetFlag,
+                credentialBootstrapFlag);
         baseTable = entry.convertBaseTableV1ToBaseTable(baseTableV1);
     }
 
@@ -94,6 +99,8 @@ void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
         pendingAttributes(pendingAttrs, true);
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
         enableAfterReset(enableAfterResetFlag, true);
+    entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
+        credentialBootstrap(credentialBootstrapFlag, true);
 
     try
     {

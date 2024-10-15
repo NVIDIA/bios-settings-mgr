@@ -359,8 +359,8 @@ void Manager::createBootOption(std::string id)
         std::make_unique<BootOptionDbus>(*systemBus, path.c_str(), *this, key);
     for (const auto& v : bootOptionValues[key])
     {
-        dbusBootOptions[key]->BootOptionDbusBase::setPropertyByName(v.first,
-                                                                    v.second);
+        dbusBootOptions[key]->BootOptionDbusBase::setPropertyByName(
+            v.first, v.second);
     }
 
     serialize(*this, biosFile);
@@ -392,6 +392,16 @@ void Manager::setBootOptionValues(const BootOptionsType& loaded)
         {
             dbusBootOptions[key]->BootOptionDbusBase::setPropertyByName(
                 v.first, v.second);
+        }
+        // In case of loading from a file with old version that doesn't
+        // include the PendingEnabled property, set it to the same value as
+        // Enabled
+        auto enabledIt = values.find("Enabled");
+        auto pendingEnabledIt = values.find("PendingEnabled");
+        if (enabledIt != values.end() && pendingEnabledIt == values.end())
+        {
+            dbusBootOptions[key]->pendingEnabled(
+                std::get<bool>(enabledIt->second));
         }
     }
 }

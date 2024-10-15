@@ -78,19 +78,24 @@ void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
     bool enableAfterResetFlag;
     bool credentialBootstrapFlag;
 
+    lg2::info("Load Bios Config Version: {VERSION}", "VERSION", currentVersion);
     if (currentVersion == BIOS_CONFIG_VERSION)
     {
-        std::uint32_t version = 0;
-        archive(version);
+        archive(currentVersion);
         archive(baseTable, pendingAttrs, enableAfterResetFlag,
                 credentialBootstrapFlag);
-        lg2::info("Bios Config Version: {VERSION}", "VERSION", version);
+    }
+    else if (currentVersion == BIOS_CONFIG_VERSION_2)
+    {
+        archive(currentVersion);
+        archive(baseTable, pendingAttrs, enableAfterResetFlag);
+        credentialBootstrapFlag = true;
     }
     else
     {
-        archive(baseTableV1, pendingAttrs, enableAfterResetFlag,
-                credentialBootstrapFlag);
+        archive(baseTableV1, pendingAttrs, enableAfterResetFlag);
         baseTable = entry.convertBaseTableV1ToBaseTable(baseTableV1);
+        credentialBootstrapFlag = true;
     }
 
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
@@ -102,53 +107,56 @@ void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
         credentialBootstrap(credentialBootstrapFlag, true);
 
-    try
-    {
-        Manager::BootOrderType bootOrderValue;
-        archive(bootOrderValue);
-        entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::BootOrder::
-            bootOrder(bootOrderValue, true);
+    Manager::BootOrderType bootOrderValue;
+    archive(bootOrderValue);
+    entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::BootOrder::
+        bootOrder(bootOrderValue, true);
 
-        Manager::BootOrderType pendingBootOrderValue;
-        archive(pendingBootOrderValue);
-        entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::BootOrder::
-            pendingBootOrder(pendingBootOrderValue, true);
+    Manager::BootOrderType pendingBootOrderValue;
+    archive(pendingBootOrderValue);
+    entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::BootOrder::
+        pendingBootOrder(pendingBootOrderValue, true);
 
-        Manager::BootOptionsType bootOptionsValues;
-        archive(bootOptionsValues);
-        entry.setBootOptionValues(bootOptionsValues);
+    Manager::BootOptionsType bootOptionsValues;
+    archive(bootOptionsValues);
+    entry.setBootOptionValues(bootOptionsValues);
 
-        Manager::CurrentBootType currentBootValue;
-        archive(currentBootValue);
-        entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::SecureBoot::
-            currentBoot(currentBootValue, true);
+    Manager::CurrentBootType currentBootValue;
+    archive(currentBootValue);
+    entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::SecureBoot::
+        currentBoot(currentBootValue, true);
 
-        bool enableValue;
-        archive(enableValue);
-        entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::SecureBoot::
-            enable(enableValue, true);
+    bool enableValue;
+    archive(enableValue);
+    entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::SecureBoot::
+        enable(enableValue, true);
 
-        Manager::ModeType modeValue;
-        archive(modeValue);
-        entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::SecureBoot::
-            mode(modeValue, true);
-    }
-    catch (cereal::Exception& e)
-    {
-        // Cannot read these properties, it could be different version
-        lg2::error("Failed to load: {ERROR}", "ERROR", e);
-    }
-    catch (const std::exception& e)
-    {
-        lg2::error("Failed to load: {ERROR}", "ERROR", e);
-    }
+    Manager::ModeType modeValue;
+    archive(modeValue);
+    entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::SecureBoot::mode(
+        modeValue, true);
 }
 
 void serialize(const Manager& obj, const fs::path& path)
 {
-    std::ofstream os(path.c_str(), std::ios::out | std::ios::binary);
-    cereal::BinaryOutputArchive oarchive(os);
-    oarchive(obj);
+    try
+    {
+        std::ofstream os(path, std::ios::out | std::ios::binary);
+
+        if (!os.is_open())
+        {
+            lg2::error("Failed to open file for serialization: {FILE}", "FILE",
+                       path);
+            return;
+        }
+
+        cereal::BinaryOutputArchive oarchive(os);
+        oarchive(obj);
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to Serialize : {ERROR} ", "ERROR", e);
+    }
 }
 
 bool deserialize(const fs::path& path, Manager& entry)
@@ -160,17 +168,38 @@ bool deserialize(const fs::path& path, Manager& entry)
             try
             {
                 std::ifstream is(path.c_str(), std::ios::in | std::ios::binary);
+                if (!is.is_open())
+                {
+                    lg2::error(
+                        "Failed to open file for deserialization: {FILE}",
+                        "FILE", path);
+                    return false;
+                }
                 cereal::BinaryInputArchive iarchive(is);
                 iarchive(entry);
             }
             catch (...)
             {
-                lg2::error("Trying with old Bios Config Version: {VERSION}",
-                           "VERSION", 1);
-                std::ifstream is(path.c_str(), std::ios::in | std::ios::binary);
-                cereal::BinaryInputArchive iarchive(is);
-                currentVersion = 1;
-                iarchive(entry);
+                try
+                {
+                    lg2::error("Trying with old Bios Config Version: {VERSION}",
+                               "VERSION", 2);
+                    std::ifstream is(path.c_str(),
+                                     std::ios::in | std::ios::binary);
+                    cereal::BinaryInputArchive iarchive(is);
+                    currentVersion = BIOS_CONFIG_VERSION_2;
+                    iarchive(entry);
+                }
+                catch (...)
+                {
+                    lg2::error("Trying with old Bios Config Version: {VERSION}",
+                               "VERSION", 1);
+                    std::ifstream is(path.c_str(),
+                                     std::ios::in | std::ios::binary);
+                    cereal::BinaryInputArchive iarchive(is);
+                    currentVersion = BIOS_CONFIG_VERSION_1;
+                    iarchive(entry);
+                }
             }
             return true;
         }
@@ -178,7 +207,7 @@ bool deserialize(const fs::path& path, Manager& entry)
     }
     catch (cereal::Exception& e)
     {
-        lg2::error("Failed to serialize: {ERROR}", "ERROR", e);
+        lg2::error("Cereal failed to serialize: {ERROR}", "ERROR", e);
         fs::remove(path);
         return false;
     }

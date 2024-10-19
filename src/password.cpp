@@ -238,7 +238,8 @@ void Password::changePassword(std::string userName, std::string currentPassword,
     }
 }
 Password::Password(sdbusplus::asio::object_server& objectServer,
-                   std::shared_ptr<sdbusplus::asio::connection>& systemBus) :
+                   std::shared_ptr<sdbusplus::asio::connection>& systemBus,
+                   std::string persistPath) :
     sdbusplus::xyz::openbmc_project::BIOSConfig::server::Password(
         *systemBus, objectPathPwd),
     objServer(objectServer), systemBus(systemBus)
@@ -246,7 +247,7 @@ Password::Password(sdbusplus::asio::object_server& objectServer,
     lg2::debug("BIOS config password is running");
     try
     {
-        fs::path biosDir(BIOS_PERSIST_PATH);
+        fs::path biosDir(persistPath);
         fs::create_directories(biosDir);
         seedFile = biosDir / biosSeedFile;
     }

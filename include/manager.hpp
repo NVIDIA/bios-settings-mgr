@@ -26,6 +26,7 @@
 #include <xyz/openbmc_project/BIOSConfig/Manager/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/SecureBoot/server.hpp>
 
+
 #include <filesystem>
 #include <string>
 #define BIOS_CONFIG_VERSION 2
@@ -99,7 +100,8 @@ class Manager : public Base
      *  @param[in] systemBus - bus connection
      */
     Manager(sdbusplus::asio::object_server& objectServer,
-            std::shared_ptr<sdbusplus::asio::connection>& systemBus);
+            std::shared_ptr<sdbusplus::asio::connection>& systemBus,
+            std::string persistPath);
 
     /** @brief Set the BIOS attribute with a new value, the new value is added
      *         to the PendingAttribute.

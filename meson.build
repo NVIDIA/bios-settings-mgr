@@ -19,7 +19,6 @@ project(
 add_project_arguments('-Wno-psabi', language: 'cpp')
 
 conf_data = configuration_data()
-conf_data.set_quoted('BIOS_PERSIST_PATH', get_option('bios-persist-path'))
 conf_data.set('CLEAR_PENDING_BOOTORDER_ON_UPDATE', get_option('clear-pending-bootorder-on-update').enabled())
 
 configure_file(output: 'config.h', configuration: conf_data)

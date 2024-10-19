@@ -16,6 +16,7 @@
 #include "password.hpp"
 
 #include "rfutility.hpp"
+#include "config.hpp"
 #include "xyz/openbmc_project/BIOSConfig/Common/error.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
 

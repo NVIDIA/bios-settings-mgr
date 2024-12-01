@@ -28,7 +28,14 @@
 
 #include <filesystem>
 #include <string>
-#define BIOS_CONFIG_VERSION 2
+#define BIOS_CONFIG_VERSION_1 1
+// Version 1: Bios table type 1
+#define BIOS_CONFIG_VERSION_2 2
+// Version 2: Bios table type 2 + version +
+// pendingBootEnable - The type remain map of variant (bool and string), but
+// additional bool was added. Version 3: Bios table type 2 + version +
+// credentialBootstrapFlag
+#define BIOS_CONFIG_VERSION 3
 
 namespace bios_config
 {

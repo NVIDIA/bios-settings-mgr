@@ -57,6 +57,7 @@ bool BootOptionDbus::pendingEnabled(bool value)
     serialize(parent, parent.biosFile);
     return v;
 }
+
 std::string BootOptionDbus::description(std::string value)
 {
     auto v = BootOptionDbusBase::description(value, false);
@@ -64,6 +65,7 @@ std::string BootOptionDbus::description(std::string value)
     serialize(parent, parent.biosFile);
     return v;
 }
+
 std::string BootOptionDbus::displayName(std::string value)
 {
     auto v = BootOptionDbusBase::displayName(value, false);
@@ -71,6 +73,7 @@ std::string BootOptionDbus::displayName(std::string value)
     serialize(parent, parent.biosFile);
     return v;
 }
+
 std::string BootOptionDbus::uefiDevicePath(std::string value)
 {
     auto v = BootOptionDbusBase::uefiDevicePath(value, false);
@@ -445,6 +448,16 @@ void Manager::setBootOptionValues(const BootOptionsType& loaded)
         {
             dbusBootOptions[key]->BootOptionDbusBase::setPropertyByName(
                 v.first, v.second);
+        }
+        // In case of loading from a file with old version that doesn't
+        // include the PendingEnabled property, set it to the same value as
+        // Enabled
+        auto enabledIt = values.find("Enabled");
+        auto pendingEnabledIt = values.find("PendingEnabled");
+        if (enabledIt != values.end() && pendingEnabledIt == values.end())
+        {
+            dbusBootOptions[key]->pendingEnabled(
+                std::get<bool>(enabledIt->second));
         }
     }
 }

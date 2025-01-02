@@ -169,10 +169,7 @@ bool Manager::credentialBootstrap(bool value)
     return credentialBootstrapFlag;
 }
 
-sdbusplus::common::xyz::openbmc_project::bios_config::Manager::ResetFlag
-    Manager::resetBIOSSettings(
-        sdbusplus::common::xyz::openbmc_project::bios_config::Manager::ResetFlag
-            value)
+Manager::ResetFlag Manager::resetBIOSSettings(Manager::ResetFlag value)
 {
     auto resetFlag = Base::resetBIOSSettings(value, false);
     serialize(*this, biosFile);

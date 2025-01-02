@@ -99,8 +99,6 @@ class Manager : public Base
                    std::vector<std::tuple<
                        BoundType, std::variant<int64_t, std::string>>>>>;
 
-    // using ResetFlag = std::map<std::string, ResetFlag>;
-
     using PendingAttributes =
         std::map<std::string,
                  std::tuple<AttributeType, std::variant<int64_t, std::string>>>;

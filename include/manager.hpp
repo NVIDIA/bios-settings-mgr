@@ -17,14 +17,14 @@
 
 #include "config.h"
 
+#include "boot_option.hpp"
+
 #include <sdbusplus/asio/object_server.hpp>
 #include <sdbusplus/server.hpp>
-#include <xyz/openbmc_project/BIOSConfig/BootOption/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/BootOrder/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/Manager/common.hpp>
 #include <xyz/openbmc_project/BIOSConfig/Manager/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/SecureBoot/server.hpp>
-#include <xyz/openbmc_project/Object/Delete/server.hpp>
 
 #include <filesystem>
 #include <string>
@@ -42,38 +42,7 @@ using Base = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager,
     sdbusplus::xyz::openbmc_project::BIOSConfig::server::BootOrder,
     sdbusplus::xyz::openbmc_project::BIOSConfig::server::SecureBoot>;
-using BootOptionDbusBase = sdbusplus::server::object_t<
-    sdbusplus::xyz::openbmc_project::BIOSConfig::server::BootOption,
-    sdbusplus::xyz::openbmc_project::Object::server::Delete>;
 namespace fs = std::filesystem;
-
-class Manager;
-
-class BootOptionDbus : public BootOptionDbusBase
-{
-  public:
-    /** @brief Constructs BootOptionDbus object.
-     *
-     *  @param[in] bus - Bus to attach to.
-     *  @param[in] path - Path to attach at.
-     *  @param[in] parent - Reference of parent.
-     *  @param[in] key - Key of this object.
-     */
-    BootOptionDbus(sdbusplus::bus_t& bus, const char* path, Manager& parent,
-                   const std::string key);
-
-    bool enabled(bool value) override;
-    bool pendingEnabled(bool value) override;
-    std::string description(std::string value) override;
-    std::string displayName(std::string value) override;
-    std::string uefiDevicePath(std::string value) override;
-
-    void delete_() override;
-
-  private:
-    Manager& parent;
-    const std::string key;
-};
 
 /** @class Manager
  *

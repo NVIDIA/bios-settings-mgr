@@ -34,56 +34,6 @@ namespace bios_config
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 using namespace sdbusplus::xyz::openbmc_project::BIOSConfig::Common::Error;
 
-BootOptionDbus::BootOptionDbus(sdbusplus::bus_t& bus, const char* path,
-                               Manager& parent, const std::string key) :
-    BootOptionDbusBase(bus, path),
-    parent(parent), key(key)
-{}
-
-bool BootOptionDbus::enabled(bool value)
-{
-    auto enabled = BootOptionDbusBase::enabled(value, false);
-    parent.bootOptionValues[key]["Enabled"] = enabled;
-    auto pendingEnabled = BootOptionDbusBase::pendingEnabled(value, false);
-    parent.bootOptionValues[key]["PendingEnabled"] = pendingEnabled;
-    serialize(parent, parent.biosFile);
-    return enabled;
-}
-
-bool BootOptionDbus::pendingEnabled(bool value)
-{
-    auto v = BootOptionDbusBase::pendingEnabled(value, false);
-    parent.bootOptionValues[key]["PendingEnabled"] = v;
-    serialize(parent, parent.biosFile);
-    return v;
-}
-std::string BootOptionDbus::description(std::string value)
-{
-    auto v = BootOptionDbusBase::description(value, false);
-    parent.bootOptionValues[key]["Description"] = v;
-    serialize(parent, parent.biosFile);
-    return v;
-}
-std::string BootOptionDbus::displayName(std::string value)
-{
-    auto v = BootOptionDbusBase::displayName(value, false);
-    parent.bootOptionValues[key]["DisplayName"] = v;
-    serialize(parent, parent.biosFile);
-    return v;
-}
-std::string BootOptionDbus::uefiDevicePath(std::string value)
-{
-    auto v = BootOptionDbusBase::uefiDevicePath(value, false);
-    parent.bootOptionValues[key]["UefiDevicePath"] = v;
-    serialize(parent, parent.biosFile);
-    return v;
-}
-
-void BootOptionDbus::delete_()
-{
-    parent.deleteBootOption(key);
-}
-
 void Manager::setAttribute(AttributeName attribute, AttributeValue value)
 {
     auto pendingAttrs = Base::pendingAttributes();

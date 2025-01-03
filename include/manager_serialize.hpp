@@ -1,5 +1,6 @@
 #pragma once
 
+#include "boot_option.hpp"
 #include "manager.hpp"
 
 #include <filesystem>

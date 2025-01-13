@@ -14,6 +14,7 @@
 // limitations under the License.
 */
 
+#include "bootvalidflag.hpp"
 #include "manager.hpp"
 #include "password.hpp"
 
@@ -48,7 +49,7 @@ int main()
      * Interface : xyz.openbmc_project.BIOSConfig.Password
      */
     bios_config_pwd::Password password(objectServer, systemBus);
-
+    bios_config_valid::BootValidFlag bootValifFlag(systemBus, *systemBus, io);
     io.run();
     return 0;
 }

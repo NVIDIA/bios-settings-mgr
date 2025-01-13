@@ -63,7 +63,8 @@ src_files = ['src/main.cpp',
              'src/manager.cpp',
              'src/manager_serialize.cpp',
              'src/password.cpp',
-             'src/rfutility.cpp'
+             'src/rfutility.cpp',
+             'src/bootvalidflag.cpp'
 
 ]
 

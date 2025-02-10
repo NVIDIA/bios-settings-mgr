@@ -43,7 +43,7 @@ class BootValidFlag
 {
   public:
     BootValidFlag(std::shared_ptr<sdbusplus::asio::connection> systemBusPtr,
-                  sdbusplus::bus_t& systemBus, boost::asio::io_service& io);
+                  boost::asio::io_service& io);
 
   private:
     std::unique_ptr<sdbusplus::bus::match::match> validUpdatedMatch;

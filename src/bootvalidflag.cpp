@@ -45,7 +45,7 @@ void BootValidFlag::setDbusProperty(const std::string& service,
         if (ec)
         {
             lg2::error(
-                "Failed to set property {PROPERTY} on {PATH} for interface {INTERFACE}",
+                "Failed to set property {PROPERTY} on {PATH} for interface {INTERFACE} ERROR: {ERROR}",
                 "PROPERTY", property, "PATH", objPath, "INTERFACE", interface,
                 "ERROR", ec.what());
             return;
@@ -62,7 +62,7 @@ void BootValidFlag::setBootValidFlag()
         if (ec)
         {
             lg2::error(
-                "Failed to get property {PROPERTY} on {PATH} for interface {INTERFACE}",
+                "Failed to get property {PROPERTY} on {PATH} for interface {INTERFACE} ERROR: {ERROR}",
                 "PROPERTY", enalbeProperty, "PATH", bootSettingsOneTimePath,
                 "INTERFACE", bootEnableIntf, "ERROR", ec.what());
             return;
@@ -80,7 +80,7 @@ void BootValidFlag::setBootValidFlag()
                 if (ec)
                 {
                     lg2::error(
-                        "Failed to get property {PROPERTY} on {PATH} for interface {INTERFACE}",
+                        "Failed to get property {PROPERTY} on {PATH} for interface {INTERFACE} ERROR: {ERROR}",
                         "PROPERTY", timeoutOverRideProperty, "PATH",
                         bootSettingsPath, "INTERFACE", timeoutOverRideIntf,
                         "ERROR", ec.what());
@@ -170,7 +170,7 @@ void BootValidFlag::restartBootValidFlag()
         if (ec)
         {
             lg2::error(
-                "Failed to get property {PROPERTY} on {PATH} for interface {INTERFACE}",
+                "Failed to get property {PROPERTY} on {PATH} for interface {INTERFACE},ERROR: {ERROR} ",
                 "PROPERTY", enalbeProperty, "PATH", bootSettingsOneTimePath,
                 "INTERFACE", bootEnableIntf, "ERROR", ec.what());
             return;
@@ -195,11 +195,27 @@ void BootValidFlag::restartBootValidFlag()
 
 BootValidFlag::BootValidFlag(
     std::shared_ptr<sdbusplus::asio::connection> systemBusPtr,
-    sdbusplus::bus_t& systemBus, boost::asio::io_service& io)
+    boost::asio::io_service& io)
 {
     dbusConnectionPtr = systemBusPtr;
-    timer_60 = std::make_unique<boost::asio::steady_timer>(io);
-    BootValidFlag::setupMatches(systemBus);
-    BootValidFlag::restartBootValidFlag();
+    // Verify if the BootValidTimeoutOverride property exists in the BMC.
+    // If it does, create a change on the property signal match and
+    // restart the boot valid flag.
+    // If it does not exist, take no action.
+    dbusConnectionPtr->async_method_call(
+        [this, &io](boost::system::error_code ec) {
+        if (ec)
+        {
+            lg2::info(
+                "Failed to find BootValidTimeoutOverride property boot valid flag won't reset after 60 seconds.ERROR: {ERROR}",
+                "ERROR", ec.what());
+            return;
+        }
+        timer_60 = std::make_unique<boost::asio::steady_timer>(io);
+        this->restartBootValidFlag();
+        this->setupMatches(*dbusConnectionPtr);
+    },
+        settingService, bootSettingsPath, propIntf, methodeGet,
+        timeoutOverRideIntf, timeoutOverRideProperty);
 }
 } // namespace bios_config_valid

@@ -187,9 +187,6 @@ void BootValidFlag::restartBootValidFlag()
             bios_config_valid::Value var(setToFalse);
             this->setDbusProperty(settingService, bootSettingsPath,
                                   bootEnableIntf, enalbeProperty, var);
-            this->setDbusProperty(settingService, bootSettingsPath,
-                                  timeoutOverRideIntf, timeoutOverRideProperty,
-                                  var);
         }
     },
         settingService, bootSettingsOneTimePath, propIntf, methodeGet,

@@ -56,11 +56,6 @@ class BootValidFlag
     located at the path "/xyz/openbmc_project/control/host0/boot".
     */
     void setupMatches(sdbusplus::bus_t& systemBus);
-    /**
-    *@brief  The function resets the value of the boot valid
-    flag and the timeout override to false upon BMC reboot.
-    */
-    void restartBootValidFlag();
 
     /** @brief Sets the property value of the given object.
      *  @param[in] bus - DBUS Bus Object.

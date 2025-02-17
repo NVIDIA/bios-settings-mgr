@@ -19,7 +19,7 @@
 constexpr auto settingService = "xyz.openbmc_project.Settings";
 constexpr auto bootSettingsPath = "/xyz/openbmc_project/control/host0/boot";
 constexpr auto bootEnableIntf = "xyz.openbmc_project.Object.Enable";
-constexpr auto timeoutOverRideIntf =
+constexpr auto bootFlagTimeoutDisIntf =
     "xyz.openbmc_project.Control.Boot.BootSettingsExpiryOverride";
 constexpr auto bootSettingsOneTimePath =
     "/xyz/openbmc_project/control/host0/boot/one_time";
@@ -27,7 +27,7 @@ constexpr auto propIntf = "org.freedesktop.DBus.Properties";
 constexpr auto methodeGet = "Get";
 constexpr auto methodSet = "Set";
 constexpr auto enalbeProperty = "Enabled";
-constexpr auto timeoutOverRideProperty = "BootValidTimeoutOverride";
+constexpr auto bootFlagTimeoutDisProperty = "BootValidTimeoutOverride";
 
 constexpr auto TIMER_TIME = 60;
 
@@ -73,7 +73,7 @@ void BootValidFlag::setBootValidFlag()
         bool persistentFlag = !std::get<bool>(value);
         if (!persistentFlag)
         {
-            // check if timeoutOverride Flag is set,
+            // check if bootFlagTimeoutDis Flag is set,
             this->dbusConnectionPtr->async_method_call(
                 [this](boost::system::error_code ec,
                        sdbusplus::message_t reply) {
@@ -81,18 +81,19 @@ void BootValidFlag::setBootValidFlag()
                 {
                     lg2::error(
                         "Failed to get property {PROPERTY} on {PATH} for interface {INTERFACE} ERROR: {ERROR}",
-                        "PROPERTY", timeoutOverRideProperty, "PATH",
-                        bootSettingsPath, "INTERFACE", timeoutOverRideIntf,
+                        "PROPERTY", bootFlagTimeoutDisProperty, "PATH",
+                        bootSettingsPath, "INTERFACE", bootFlagTimeoutDisIntf,
                         "ERROR", ec.what());
                     return;
                 }
                 bios_config_valid::Value value;
                 reply.read(value);
-                bool timeoutOverride = std::get<bool>(value);
-                if (!timeoutOverride)
+                bool bootFlagTimeoutDis = std::get<bool>(value);
+                if (!bootFlagTimeoutDis)
                 {
-                    // If both the Persistent Flag and Timeout Override Flags
-                    // are not set, then set the Boot Valid Flag value to false.
+                    // If both the Persistent Flag and Timeout Override Disable
+                    // Flags are not set, then set the Boot Valid Flag value to
+                    // false.
                     bool setToFalse = false;
                     bios_config_valid::Value var(setToFalse);
                     this->setDbusProperty(settingService, bootSettingsPath,
@@ -100,7 +101,7 @@ void BootValidFlag::setBootValidFlag()
                 }
             },
                 settingService, bootSettingsPath, propIntf, methodeGet,
-                timeoutOverRideIntf, timeoutOverRideProperty);
+                bootFlagTimeoutDisIntf, bootFlagTimeoutDisProperty);
         }
     },
         settingService, bootSettingsOneTimePath, propIntf, methodeGet,
@@ -163,36 +164,6 @@ void BootValidFlag::setupMatches(sdbusplus::bus_t& dbusConnection)
         [this](sdbusplus::message::message& msg) { this->setTimer(msg); });
 }
 
-void BootValidFlag::restartBootValidFlag()
-{
-    dbusConnectionPtr->async_method_call(
-        [this](boost::system::error_code ec, sdbusplus::message_t reply) {
-        if (ec)
-        {
-            lg2::error(
-                "Failed to get property {PROPERTY} on {PATH} for interface {INTERFACE},ERROR: {ERROR} ",
-                "PROPERTY", enalbeProperty, "PATH", bootSettingsOneTimePath,
-                "INTERFACE", bootEnableIntf, "ERROR", ec.what());
-            return;
-        }
-        // check if persistent Flag is set,
-        // if no set the TimeoutOverRide Flag
-        // and boot valid flag to false on BMC reboot
-        bios_config_valid::Value value;
-        reply.read(value);
-        bool persistentFlag = !std::get<bool>(value);
-        if (!persistentFlag)
-        {
-            bool setToFalse = false;
-            bios_config_valid::Value var(setToFalse);
-            this->setDbusProperty(settingService, bootSettingsPath,
-                                  bootEnableIntf, enalbeProperty, var);
-        }
-    },
-        settingService, bootSettingsOneTimePath, propIntf, methodeGet,
-        bootEnableIntf, enalbeProperty);
-}
-
 BootValidFlag::BootValidFlag(
     std::shared_ptr<sdbusplus::asio::connection> systemBusPtr,
     boost::asio::io_service& io)
@@ -212,10 +183,10 @@ BootValidFlag::BootValidFlag(
             return;
         }
         timer_60 = std::make_unique<boost::asio::steady_timer>(io);
-        this->restartBootValidFlag();
+        this->setBootValidFlag();
         this->setupMatches(*dbusConnectionPtr);
     },
         settingService, bootSettingsPath, propIntf, methodeGet,
-        timeoutOverRideIntf, timeoutOverRideProperty);
+        bootFlagTimeoutDisIntf, bootFlagTimeoutDisProperty);
 }
 } // namespace bios_config_valid

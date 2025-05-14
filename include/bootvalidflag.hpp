@@ -47,6 +47,7 @@ class BootValidFlag
 
   private:
     std::unique_ptr<sdbusplus::bus::match::match> validUpdatedMatch;
+    std::unique_ptr<sdbusplus::bus::match::match> softResetMatch;
     std::unique_ptr<boost::asio::steady_timer> timer_60;
     std::shared_ptr<sdbusplus::asio::connection> dbusConnectionPtr;
 
@@ -79,9 +80,14 @@ class BootValidFlag
     /** @brief Set a timer for 60 seconds each time a property
      *  change signal with the value "true" is received.
      *  @param[in] msg - DBUS Bus Object.
-     *  @param[in] dbusConnection:  D-Bus messages
      */
     void setTimer(sdbusplus::message::message& msg);
+
+    /** @brief Cancel the timer if the property
+     *  we get property change signal of last boot time..
+     *  @param[in] msg - DBUS Bus Object.
+     */
+    void cancelTimer(sdbusplus::message::message& msg);
 };
 
 } // namespace bios_config_valid

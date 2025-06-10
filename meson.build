@@ -71,7 +71,8 @@ src_files = [
     'src/manager_serialize.cpp',
     'src/password.cpp',
     'src/rfutility.cpp',
-    'src/boot_option.cpp'
+    'src/boot_option.cpp',
+    'src/bootvalidflag.cpp'
 ]
 
 executable(

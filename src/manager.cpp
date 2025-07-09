@@ -475,7 +475,7 @@ Manager::CurrentBootType Manager::currentBoot(Manager::CurrentBootType value)
     // Below block of code is to send event when CurrentBoot property is
     // modified.
     std::string bootType = convertCurrentBootTypeToString(value);
-    parsePropertyValueAndSendEvent("ScureCurrentBoot", bootType, objectPath);
+    parsePropertyValueAndSendEvent("SecureCurrentBoot", bootType, objectPath);
 
     return newValue;
 }

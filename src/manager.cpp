@@ -433,7 +433,7 @@ Manager::CurrentBootType Manager::currentBoot(Manager::CurrentBootType value)
     // Below block of code is to send event when CurrentBoot property is
     // modified.
     std::string bootType = convertCurrentBootTypeToString(value);
-    parsePropertyValueAndSendEvent("ScureCurrentBoot", bootType, objectPath);
+    parsePropertyValueAndSendEvent("SecureCurrentBoot", bootType, objectPath);
 
     return newValue;
 }
@@ -461,8 +461,8 @@ Manager::ModeType Manager::mode(Manager::ModeType value)
 Manager::Manager(sdbusplus::asio::object_server& objectServer,
                  std::shared_ptr<sdbusplus::asio::connection>& systemBus,
                  std::string persistPath) :
-    bios_config::Base(*systemBus, objectPath),
-    objServer(objectServer), systemBus(systemBus)
+    bios_config::Base(*systemBus, objectPath), objServer(objectServer),
+    systemBus(systemBus)
 {
     fs::path biosDir(persistPath);
     fs::create_directories(biosDir);

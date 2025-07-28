@@ -109,6 +109,30 @@ void BootValidFlag::setBootValidFlag()
     return;
 }
 
+void BootValidFlag::cancelTimer(sdbusplus::message::message& msg)
+{
+    std::string interfaceName;
+    std::map<std::string, std::variant<bool>> changedProperties;
+    std::vector<std::string> invalidatedProperties;
+    msg.read(interfaceName, changedProperties, invalidatedProperties);
+    // Verify if the property has been set to false, and if so, cancel the
+    // timer.
+    lg2::info("Check if need to cancel timer");
+    for (const auto& [property, value] : changedProperties)
+    {
+        if (property == "BootProgressLastUpdate")
+        {
+            if (timer_60->expiry() > std::chrono::steady_clock::now())
+            {
+                lg2::info("Timer is active, so cancel it");
+                // Timer is active, so cancel it
+                timer_60->cancel();
+            }
+            return;
+        }
+    }
+}
+
 void BootValidFlag::setTimer(sdbusplus::message::message& msg)
 {
     std::string interfaceName;
@@ -119,28 +143,37 @@ void BootValidFlag::setTimer(sdbusplus::message::message& msg)
     // timer.
     for (const auto& [property, value] : changedProperties)
     {
-        if (property == enalbeProperty)
+        if (property == bootFlagTimeoutDisProperty)
         {
-            bool boootValidFlagValue = std::get<bool>(value);
-            if (!boootValidFlagValue)
+            bool bootValidFlagValue = std::get<bool>(value);
+            // if BootValidTimeoutOverride is true, the timer should be ignored
+            // else start the timer
+            if (bootValidFlagValue)
             {
-                if (timer_60->expiry() > std::chrono::steady_clock::now())
-                {
-                    // Timer is active, so cancel it
-                    timer_60->cancel();
-                }
+                lg2::info(
+                    "BootValidTimeoutOverride is true, exit without setting timer");
+                return;
+            }
+        }
+        else if (property == enalbeProperty)
+        {
+            bool bootValidFlagValue = std::get<bool>(value);
+            if (!bootValidFlagValue)
+            {
+                lg2::info("enabled is false, exit without setting timer");
                 return;
             }
         }
     }
+    lg2::info("Starting boot valid flag timer");
+
     // Set new expiry time and start new asynchronous wait for 60 sec.
     timer_60->expires_after(std::chrono::seconds(TIMER_TIME));
     timer_60->async_wait([this](const boost::system::error_code& error) {
         if (!error)
         {
-            {
-                this->setBootValidFlag();
-            }
+            lg2::info("Timer expired, setting boot valid flag");
+            this->setBootValidFlag();
         }
         else
         {
@@ -162,6 +195,20 @@ void BootValidFlag::setupMatches(sdbusplus::bus_t& dbusConnection)
             sdbusplus::bus::match::rules::path(
                 std::string{"/xyz/openbmc_project/control/host0/boot"}),
         [this](sdbusplus::message::message& msg) { this->setTimer(msg); });
+
+    lg2::info("Setting up soft reset match");
+    softResetMatch = std::make_unique<sdbusplus::bus::match::match>(
+        dbusConnection,
+        sdbusplus::bus::match::rules::type::signal() +
+            sdbusplus::bus::match::rules::member(
+                std::string{"PropertiesChanged"}) +
+            sdbusplus::bus::match::rules::interface(
+                std::string{"org.freedesktop.DBus.Properties"}) +
+            sdbusplus::bus::match::rules::argN(
+                0, "xyz.openbmc_project.State.Boot.Progress") +
+            sdbusplus::bus::match::rules::path(
+                std::string{"/xyz/openbmc_project/state/host0"}),
+        [this](sdbusplus::message::message& msg) { this->cancelTimer(msg); });
 }
 
 BootValidFlag::BootValidFlag(

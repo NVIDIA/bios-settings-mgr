@@ -19,7 +19,10 @@ project(
 add_project_arguments('-Wno-psabi', language: 'cpp')
 
 conf_data = configuration_data()
-conf_data.set('CLEAR_PENDING_BOOTORDER_ON_UPDATE', get_option('clear-pending-bootorder-on-update').enabled())
+conf_data.set(
+    'CLEAR_PENDING_BOOTORDER_ON_UPDATE',
+    get_option('clear-pending-bootorder-on-update').enabled(),
+)
 
 configure_file(output: 'config.h', configuration: conf_data)
 
@@ -72,7 +75,7 @@ src_files = [
     'src/password.cpp',
     'src/rfutility.cpp',
     'src/boot_option.cpp',
-    'src/bootvalidflag.cpp'
+    'src/bootvalidflag.cpp',
 ]
 
 executable(

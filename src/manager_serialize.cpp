@@ -37,7 +37,8 @@ static std::uint32_t currentVersion = BIOS_CONFIG_VERSION;
  *                       across code levels
  */
 template <class Archive>
-void save(Archive& archive, const Manager& entry, const std::uint32_t /*version*/)
+void save(Archive& archive, const Manager& entry,
+          const std::uint32_t /*version*/)
 {
     std::uint32_t version = BIOS_CONFIG_VERSION;
     archive(version);

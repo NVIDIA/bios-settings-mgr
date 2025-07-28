@@ -27,7 +27,6 @@
 #include <xyz/openbmc_project/BIOSConfig/Manager/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/SecureBoot/server.hpp>
 
-
 #include <filesystem>
 #include <string>
 #define BIOS_CONFIG_VERSION_1 1

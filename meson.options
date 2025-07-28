@@ -1,1 +1,6 @@
-option('clear-pending-bootorder-on-update', type : 'feature', value : 'disabled', description : 'Enable/disable remove bootOrder pending list on setting active bootorder.')
+option(
+    'clear-pending-bootorder-on-update',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Enable/disable remove bootOrder pending list on setting active bootorder.',
+)

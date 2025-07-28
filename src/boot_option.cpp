@@ -8,8 +8,7 @@ namespace bios_config
 
 BootOptionDbus::BootOptionDbus(sdbusplus::bus_t& bus, const char* path,
                                Manager& parent, const std::string key) :
-    BootOptionDbusBase(bus, path),
-    parent(parent), key(key)
+    BootOptionDbusBase(bus, path), parent(parent), key(key)
 {}
 
 bool BootOptionDbus::enabled(bool value)

@@ -58,7 +58,7 @@ void save(Archive& archive, const Manager& entry,
     archive(entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::
                 SecureBoot::currentBoot());
     archive(entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::
-                SecureBoot::enable());
+                SecureBoot::pendingEnable());
     archive(entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::
                 SecureBoot::mode());
 }
@@ -75,7 +75,7 @@ template <class Archive>
 void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
 {
     Manager::BaseTable baseTable;
-    Manager::BaseTableV1 baseTableV1;
+    Manager::oldBaseTable baseTableV1;
 
     Manager::PendingAttributes pendingAttrs;
     bool enableAfterResetFlag;
@@ -97,7 +97,7 @@ void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
     else
     {
         archive(baseTableV1, pendingAttrs, enableAfterResetFlag);
-        baseTable = entry.convertBaseTableV1ToBaseTable(baseTableV1);
+        entry.convertBiosDataToVersion1(baseTableV1, baseTable);
         credentialBootstrapFlag = true;
     }
 
@@ -133,7 +133,7 @@ void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
     bool enableValue;
     archive(enableValue);
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::SecureBoot::
-        enable(enableValue, true);
+        pendingEnable(enableValue, true);
 
     Manager::ModeType modeValue;
     archive(modeValue);

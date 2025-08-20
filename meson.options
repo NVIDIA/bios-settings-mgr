@@ -4,3 +4,9 @@ option(
     value: 'disabled',
     description: 'Enable/disable remove bootOrder pending list on setting active bootorder.',
 )
+option(
+    'enable-bios-secureboot',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Enable BIOS SecureBoot configuration. The UEFI Secureboot information is obtained via Redfish Host Interface',
+)

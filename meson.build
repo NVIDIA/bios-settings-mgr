@@ -24,7 +24,10 @@ conf_data.set(
     get_option('clear-pending-bootorder-on-update').enabled(),
 )
 
-configure_file(output: 'config.h', configuration: conf_data)
+if (get_option('enable-bios-secureboot').allowed())
+    add_project_arguments('-DENABLE_BIOS_SECUREBOOT', language: 'cpp')
+endif
+configure_file(output: 'configuration.h', configuration: conf_data)
 
 boost_args = [
     '-DBOOST_ALL_NO_LIB',
@@ -76,6 +79,7 @@ src_files = [
     'src/rfutility.cpp',
     'src/boot_option.cpp',
     'src/bootvalidflag.cpp',
+    'src/secureboot.cpp',
 ]
 
 executable(
@@ -91,7 +95,7 @@ executable(
 
 systemd = dependency('systemd')
 systemd_system_unit_dir = systemd.get_variable(
-    'systemdsystemunitdir',
+    'systemd_system_unit_dir',
     pkgconfig_define: ['prefix', get_option('prefix')],
 )
 

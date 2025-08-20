@@ -13,11 +13,13 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 */
+#include "configuration.h"
 
 #include "bootvalidflag.hpp"
 #include "config.hpp"
 #include "manager.hpp"
 #include "password.hpp"
+#include "secureboot.hpp"
 
 #include <boost/asio.hpp>
 #include <phosphor-logging/elog-errors.hpp>
@@ -61,6 +63,17 @@ int main(int argc, char** argv)
     bios_config_pwd::Password password(objectServer, systemBus, persistPath);
 
     bios_config_valid::BootValidFlag bootValifFlag(systemBus, io);
+#ifdef ENABLE_BIOS_SECUREBOOT
+    /**
+     * SecureBoot class is responsible for handling methods and signals under
+     * the following object path and interface.
+     *
+     * Object path : /xyz/openbmc_project/bios_config/secure_boot
+     * Interface : xyz.openbmc_project.BIOSConfig.SecureBoot
+     */
+    bios_config_sec::SecureBoot secureboot(objectServer, systemBus,
+                                           persistPath);
+#endif
 
     io.run();
     return 0;

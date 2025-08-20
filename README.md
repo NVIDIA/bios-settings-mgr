@@ -21,12 +21,24 @@ For more details, please refer to [design document][rbmc-design-document].
 ## RBC Manager Interface
 
 The Manager interface exposes methods and properties to Get & Set BIOS
-attributes via dbus and its documented [here][pdi-manager-bios]
+attributes via [dbus][pdi-manager-bios].
+
+### Service Name
+
+```txt
+xyz.openbmc_project.BIOSConfigManager
+```
 
 ### Object Path
 
 ```txt
-/xyz/openbmc_project/BIOSConfig/Manager
+/xyz/openbmc_project/bios_config/manager
+```
+
+### Interface Name
+
+```txt
+xyz.openbmc_project.BIOSConfig.Manager
 ```
 
 ### Methods
@@ -154,7 +166,19 @@ For more details, refer to the code [BIOS Support in IPMI][ipmi-intel-bios].
 
 ## RBC Password Interface
 
+### Service Name
+
+```txt
+xyz.openbmc_project.BIOSConfigManager
+```
+
 ### Object Path
+
+```txt
+/xyz/openbmc_project/bios_config/password
+```
+
+### Interface Name
 
 ```txt
 xyz.openbmc_project.BIOSConfig.Password
@@ -162,13 +186,37 @@ xyz.openbmc_project.BIOSConfig.Password
 
 ### Methods
 
-- **ChangePassword**  
-  Used to change the BIOS setup password.
+- **ChangePassword** Used to change the BIOS setup password.
 
 ### Properties
 
 - **PasswordInitialized** Used to indicate whether the BIOS password-related
   details have been received.
+
+## RBC SecureBoot Interface
+
+The SecureBoot interface exposes methods and properties to Get & Set UEFI
+SecureBoot settings via [dbus][pdi-secureboot-bios].
+
+### Object Path
+
+```txt
+xyz.openbmc_project.BIOSConfig.SecureBoot
+```
+
+### Properties
+
+- **CurrentBoot** Used to indicate UEFI Secure Boot state during current boot
+  cycle
+- **PendingEnable** An indication of whether the UEFI Secure Boot takes effect
+  on next boot
+- **Mode** The current UEFI Secure Boot Mode
+
+### SecureBoot with Redfish Host Interface as Communication Protocol
+
+For systems that use the **Redfish Host Interface** protocol between BMC & Host,
+UEFI SecureBoot configuration is gathered by BMC via redfish. The settings are
+transformed to native dbus format and properties are set accordingly.
 
 [rbmc-design-document]:
   https://github.com/openbmc/docs/blob/master/designs/remote-bios-configuration.md
@@ -179,3 +227,5 @@ xyz.openbmc_project.BIOSConfig.Password
   https://github.com/openbmc/intel-ipmi-oem/blob/master/src/biosconfigcommands.cpp
 [pdi-manager-bios]:
   https://github.com/openbmc/phosphor-dbus-interfaces/blob/master/yaml/xyz/openbmc_project/BIOSConfig/Manager.interface.yaml
+[pdi-secureboot-bios]:
+  https://github.com/openbmc/phosphor-dbus-interfaces/blob/master/yaml/xyz/openbmc_project/BIOSConfig/SecureBoot.interface.yaml

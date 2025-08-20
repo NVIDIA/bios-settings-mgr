@@ -16,8 +16,6 @@
 
 #pragma once
 
-#include "config.h"
-
 #include "boot_option.hpp"
 
 #include <sdbusplus/asio/object_server.hpp>
@@ -68,7 +66,7 @@ class Manager : public Base
             std::vector<std::tuple<
                 BoundType, std::variant<int64_t, std::string>, std::string>>>>;
 
-    using BaseTableV1 = std::map<
+    using oldBaseTable = std::map<
         std::string,
         std::tuple<AttributeType, bool, std::string, std::string, std::string,
                    std::variant<int64_t, std::string>,
@@ -189,13 +187,32 @@ class Manager : public Base
      */
     BootOrderType pendingBootOrder(BootOrderType value) override;
     CurrentBootType currentBoot(CurrentBootType value) override;
-    bool enable(bool value) override;
+    bool pendingEnable(bool value) override;
     ModeType mode(ModeType value) override;
 
     friend class BootOptionDbus;
 
-    BaseTable
-        convertBaseTableV1ToBaseTable(const Manager::BaseTableV1& tableV1);
+    /** @brief Convert the previosuly supported Base BIOS table to newly
+     * supported Base BIOS table
+     *
+     *  @param[in] biosTbl - Old Base BIOS table (without VDN)
+     *  @param[in] baseTable - Recently supported Base BIOS table (with VDN)
+     *
+     *  @return void
+     *
+     */
+    void convertBiosDataToVersion1(Manager::oldBaseTable biosTbl,
+                                   Manager::BaseTable& baseTable);
+
+    /** @brief Convert the VDN supported Base BIOS table to old Base BIOS table
+     *
+     *  @param[in] biosTbl - Old Base BIOS table (without VDN)
+     *  @param[in] baseTable - Recently supported Base BIOS table (with VDN)
+     *
+     *  @return void
+     */
+    void convertBiosDataToVersion0(Manager::oldBaseTable& baseTable,
+                                   Manager::BaseTable& biosTbl);
 
   private:
     /** @enum Index into the fields in the BaseBIOSTable

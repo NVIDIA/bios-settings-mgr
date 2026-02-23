@@ -22,6 +22,7 @@
 #include "xyz/openbmc_project/Common/error.hpp"
 
 #include <boost/asio.hpp>
+#include <boost/asio/post.hpp>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/asio/connection.hpp>
@@ -101,29 +102,35 @@ Manager::BaseTable Manager::baseBIOSTable(BaseTable value)
 {
     pendingAttributes({});
     auto baseTable = Base::baseBIOSTable(value, false);
-    serialize(*this, biosFile);
-    Base::resetBIOSSettings(Base::ResetFlag::NoAction);
+    // Defer serialize and reset to avoid blocking D-Bus reply
+    boost::asio::post(systemBus->get_io_context(), [this]() {
+        serialize(*this, biosFile);
+        this->Base::resetBIOSSettings(Base::ResetFlag::NoAction);
+    });
     return baseTable;
 }
 
 bool Manager::enableAfterReset(bool value)
 {
     auto enableAfterResetFlag = Base::enableAfterReset(value, false);
-    serialize(*this, biosFile);
+    boost::asio::post(systemBus->get_io_context(),
+                      [this]() { serialize(*this, biosFile); });
     return enableAfterResetFlag;
 }
 
 bool Manager::credentialBootstrap(bool value)
 {
     auto credentialBootstrapFlag = Base::credentialBootstrap(value, false);
-    serialize(*this, biosFile);
+    boost::asio::post(systemBus->get_io_context(),
+                      [this]() { serialize(*this, biosFile); });
     return credentialBootstrapFlag;
 }
 
 Manager::ResetFlag Manager::resetBIOSSettings(Manager::ResetFlag value)
 {
     auto resetFlag = Base::resetBIOSSettings(value, false);
-    serialize(*this, biosFile);
+    boost::asio::post(systemBus->get_io_context(),
+                      [this]() { serialize(*this, biosFile); });
 
     // Below block of code is to send event when ResetBIOSSettings property is
     // modified.
@@ -238,7 +245,6 @@ Manager::PendingAttributes Manager::pendingAttributes(PendingAttributes value)
     if (value.empty())
     {
         auto pendingAttrs = Base::pendingAttributes({}, false);
-        serialize(*this, biosFile);
         return pendingAttrs;
     }
 
@@ -337,7 +343,8 @@ Manager::PendingAttributes Manager::pendingAttributes(PendingAttributes value)
     }
 
     auto pendingAttrs = Base::pendingAttributes(pendingAttribute, false);
-    serialize(*this, biosFile);
+    boost::asio::post(systemBus->get_io_context(),
+                      [this]() { serialize(*this, biosFile); });
 
     return pendingAttrs;
 }
@@ -450,7 +457,8 @@ void Manager::createBootOption(std::string id)
             v.first, v.second);
     }
 
-    serialize(*this, biosFile);
+    boost::asio::post(systemBus->get_io_context(),
+                      [this]() { serialize(*this, biosFile); });
 }
 
 void Manager::deleteBootOption(const std::string& key)
@@ -458,7 +466,8 @@ void Manager::deleteBootOption(const std::string& key)
     bootOptionValues.erase(key);
     dbusBootOptions.erase(key);
 
-    serialize(*this, biosFile);
+    boost::asio::post(systemBus->get_io_context(),
+                      [this]() { serialize(*this, biosFile); });
 }
 
 Manager::BootOptionsType Manager::getBootOptionValues() const
@@ -507,14 +516,16 @@ Manager::BootOrderType Manager::bootOrder(Manager::BootOrderType value)
 Manager::BootOrderType Manager::pendingBootOrder(Manager::BootOrderType value)
 {
     auto newValue = Base::pendingBootOrder(value, false);
-    serialize(*this, biosFile);
+    boost::asio::post(systemBus->get_io_context(),
+                      [this]() { serialize(*this, biosFile); });
     return newValue;
 }
 
 Manager::CurrentBootType Manager::currentBoot(Manager::CurrentBootType value)
 {
     auto newValue = Base::currentBoot(value, false);
-    serialize(*this, biosFile);
+    boost::asio::post(systemBus->get_io_context(),
+                      [this]() { serialize(*this, biosFile); });
     using namespace phosphor::logging;
     // Below block of code is to send event when CurrentBoot property is
     // modified.
@@ -527,7 +538,8 @@ Manager::CurrentBootType Manager::currentBoot(Manager::CurrentBootType value)
 bool Manager::pendingEnable(bool value)
 {
     auto newValue = Base::pendingEnable(value, false);
-    serialize(*this, biosFile);
+    boost::asio::post(systemBus->get_io_context(),
+                      [this]() { serialize(*this, biosFile); });
     sendRedfishEvent("SecureBootEnable", std::to_string(value), objectPath);
     return newValue;
 }
@@ -535,7 +547,8 @@ bool Manager::pendingEnable(bool value)
 Manager::ModeType Manager::mode(Manager::ModeType value)
 {
     auto newValue = Base::mode(value, false);
-    serialize(*this, biosFile);
+    boost::asio::post(systemBus->get_io_context(),
+                      [this]() { serialize(*this, biosFile); });
     using namespace phosphor::logging;
     // Below block of code is to send event when SecureBootMode property is
     // modified.

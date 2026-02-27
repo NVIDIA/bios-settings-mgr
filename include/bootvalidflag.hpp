@@ -46,7 +46,7 @@ class BootValidFlag
     BootValidFlag(std::shared_ptr<sdbusplus::asio::connection> systemBusPtr,
                   boost::asio::io_context& io);
 
-  private:
+  protected:
     std::unique_ptr<sdbusplus::bus::match::match> validUpdatedMatch;
     std::unique_ptr<sdbusplus::bus::match::match> softResetMatch;
     std::unique_ptr<boost::asio::steady_timer> timer_60;

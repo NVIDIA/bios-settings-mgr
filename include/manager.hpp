@@ -229,6 +229,15 @@ class Manager : public Base
         options,
     };
 
+    sdbusplus::asio::object_server& objServer;
+    std::shared_ptr<sdbusplus::asio::connection>& systemBus;
+    std::filesystem::path biosFile;
+    BootOptionsType bootOptionValues;
+
+  protected:
+    // Made protected to enable unit testing
+    std::map<std::string, std::unique_ptr<BootOptionDbus>> dbusBootOptions;
+
     bool validateEnumOption(
         const std::string& attrValue,
         const std::vector<std::tuple<
@@ -246,12 +255,6 @@ class Manager : public Base
         const std::vector<std::tuple<
             BoundType, std::variant<int64_t, std::string>, std::string>>&
             options);
-
-    sdbusplus::asio::object_server& objServer;
-    std::shared_ptr<sdbusplus::asio::connection>& systemBus;
-    std::filesystem::path biosFile;
-    BootOptionsType bootOptionValues;
-    std::map<std::string, std::unique_ptr<BootOptionDbus>> dbusBootOptions;
 };
 
 } // namespace bios_config

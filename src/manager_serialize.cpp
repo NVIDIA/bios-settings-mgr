@@ -221,6 +221,7 @@ void asyncSerialize(boost::asio::io_context& io, const Manager& obj,
 
 bool deserialize(const fs::path& path, Manager& entry)
 {
+    currentVersion = BIOS_CONFIG_VERSION;
     try
     {
         if (fs::exists(path))

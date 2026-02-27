@@ -110,3 +110,7 @@ fs.copyfile(
     install: true,
     install_dir: systemd_system_unit_dir,
 )
+
+if get_option('tests').allowed()
+    subdir('test')
+endif

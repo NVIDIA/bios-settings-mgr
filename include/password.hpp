@@ -73,7 +73,7 @@ class Password : public Base
     void changePassword(std::string userName, std::string currentPassword,
                         std::string newPassword) override;
 
-  private:
+  protected:
     void verifyPassword(std::string userName, std::string currentPassword,
                         std::string newPassword);
     bool compareDigest(const EVP_MD* digestFunc, size_t digestLen,

@@ -1,3 +1,5 @@
+option('tests', type: 'feature', value: 'auto', description: 'Build tests')
+
 option(
     'clear-pending-bootorder-on-update',
     type: 'feature',

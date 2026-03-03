@@ -102,35 +102,29 @@ Manager::BaseTable Manager::baseBIOSTable(BaseTable value)
 {
     pendingAttributes({});
     auto baseTable = Base::baseBIOSTable(value, false);
-    // Defer serialize and reset to avoid blocking D-Bus reply
-    boost::asio::post(systemBus->get_io_context(), [this]() {
-        serialize(*this, biosFile);
-        this->Base::resetBIOSSettings(Base::ResetFlag::NoAction);
-    });
+    asyncSerialize(systemBus->get_io_context(), *this, biosFile);
+    Base::resetBIOSSettings(Base::ResetFlag::NoAction);
     return baseTable;
 }
 
 bool Manager::enableAfterReset(bool value)
 {
     auto enableAfterResetFlag = Base::enableAfterReset(value, false);
-    boost::asio::post(systemBus->get_io_context(),
-                      [this]() { serialize(*this, biosFile); });
+    asyncSerialize(systemBus->get_io_context(), *this, biosFile);
     return enableAfterResetFlag;
 }
 
 bool Manager::credentialBootstrap(bool value)
 {
     auto credentialBootstrapFlag = Base::credentialBootstrap(value, false);
-    boost::asio::post(systemBus->get_io_context(),
-                      [this]() { serialize(*this, biosFile); });
+    asyncSerialize(systemBus->get_io_context(), *this, biosFile);
     return credentialBootstrapFlag;
 }
 
 Manager::ResetFlag Manager::resetBIOSSettings(Manager::ResetFlag value)
 {
     auto resetFlag = Base::resetBIOSSettings(value, false);
-    boost::asio::post(systemBus->get_io_context(),
-                      [this]() { serialize(*this, biosFile); });
+    asyncSerialize(systemBus->get_io_context(), *this, biosFile);
 
     // Below block of code is to send event when ResetBIOSSettings property is
     // modified.
@@ -343,8 +337,7 @@ Manager::PendingAttributes Manager::pendingAttributes(PendingAttributes value)
     }
 
     auto pendingAttrs = Base::pendingAttributes(pendingAttribute, false);
-    boost::asio::post(systemBus->get_io_context(),
-                      [this]() { serialize(*this, biosFile); });
+    asyncSerialize(systemBus->get_io_context(), *this, biosFile);
 
     return pendingAttrs;
 }
@@ -451,14 +444,16 @@ void Manager::createBootOption(std::string id)
                              {"UefiDevicePath", ""}};
     dbusBootOptions[key] =
         std::make_unique<BootOptionDbus>(*systemBus, path.c_str(), *this, key);
-    for (const auto& v : bootOptionValues[key])
-    {
-        dbusBootOptions[key]->BootOptionDbusBase::setPropertyByName(
-            v.first, v.second);
-    }
+    // Call base setters directly to avoid our overrides (which would each post
+    // serialize). Serialize once at end.
+    auto& obj = dbusBootOptions[key];
+    obj->BootOptionDbusBase::enabled(true, false);
+    obj->BootOptionDbusBase::pendingEnabled(true, false);
+    obj->BootOptionDbusBase::description("", false);
+    obj->BootOptionDbusBase::displayName("", false);
+    obj->BootOptionDbusBase::uefiDevicePath("", false);
 
-    boost::asio::post(systemBus->get_io_context(),
-                      [this]() { serialize(*this, biosFile); });
+    asyncSerialize(systemBus->get_io_context(), *this, biosFile);
 }
 
 void Manager::deleteBootOption(const std::string& key)
@@ -466,8 +461,7 @@ void Manager::deleteBootOption(const std::string& key)
     bootOptionValues.erase(key);
     dbusBootOptions.erase(key);
 
-    boost::asio::post(systemBus->get_io_context(),
-                      [this]() { serialize(*this, biosFile); });
+    asyncSerialize(systemBus->get_io_context(), *this, biosFile);
 }
 
 Manager::BootOptionsType Manager::getBootOptionValues() const
@@ -516,16 +510,14 @@ Manager::BootOrderType Manager::bootOrder(Manager::BootOrderType value)
 Manager::BootOrderType Manager::pendingBootOrder(Manager::BootOrderType value)
 {
     auto newValue = Base::pendingBootOrder(value, false);
-    boost::asio::post(systemBus->get_io_context(),
-                      [this]() { serialize(*this, biosFile); });
+    asyncSerialize(systemBus->get_io_context(), *this, biosFile);
     return newValue;
 }
 
 Manager::CurrentBootType Manager::currentBoot(Manager::CurrentBootType value)
 {
     auto newValue = Base::currentBoot(value, false);
-    boost::asio::post(systemBus->get_io_context(),
-                      [this]() { serialize(*this, biosFile); });
+    asyncSerialize(systemBus->get_io_context(), *this, biosFile);
     using namespace phosphor::logging;
     // Below block of code is to send event when CurrentBoot property is
     // modified.
@@ -538,8 +530,7 @@ Manager::CurrentBootType Manager::currentBoot(Manager::CurrentBootType value)
 bool Manager::pendingEnable(bool value)
 {
     auto newValue = Base::pendingEnable(value, false);
-    boost::asio::post(systemBus->get_io_context(),
-                      [this]() { serialize(*this, biosFile); });
+    asyncSerialize(systemBus->get_io_context(), *this, biosFile);
     sendRedfishEvent("SecureBootEnable", std::to_string(value), objectPath);
     return newValue;
 }
@@ -547,8 +538,7 @@ bool Manager::pendingEnable(bool value)
 Manager::ModeType Manager::mode(Manager::ModeType value)
 {
     auto newValue = Base::mode(value, false);
-    boost::asio::post(systemBus->get_io_context(),
-                      [this]() { serialize(*this, biosFile); });
+    asyncSerialize(systemBus->get_io_context(), *this, biosFile);
     using namespace phosphor::logging;
     // Below block of code is to send event when SecureBootMode property is
     // modified.

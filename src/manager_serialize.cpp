@@ -1,5 +1,7 @@
 #include "manager_serialize.hpp"
 
+#include <boost/asio/stream_file.hpp>
+#include <boost/asio/write.hpp>
 #include <cereal/archives/binary.hpp>
 #include <cereal/cereal.hpp>
 #include <cereal/types/map.hpp>
@@ -11,6 +13,7 @@
 
 #include <fstream>
 #include <map>
+#include <sstream>
 #include <variant>
 #include <vector>
 
@@ -141,6 +144,23 @@ void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
         modeValue, true);
 }
 
+bool serializeToBuffer(const Manager& obj, std::string& out)
+{
+    try
+    {
+        std::ostringstream os(std::ios::binary);
+        cereal::BinaryOutputArchive oarchive(os);
+        oarchive(obj);
+        out = os.str();
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to serialize to buffer: {ERROR}", "ERROR", e);
+        return false;
+    }
+}
+
 void serialize(const Manager& obj, const fs::path& path)
 {
     try
@@ -161,6 +181,42 @@ void serialize(const Manager& obj, const fs::path& path)
     {
         lg2::error("Failed to Serialize : {ERROR} ", "ERROR", e);
     }
+}
+
+void asyncSerialize(boost::asio::io_context& io, const Manager& obj,
+                    const fs::path& path)
+{
+    std::string buffer;
+    if (!serializeToBuffer(obj, buffer))
+    {
+        return;
+    }
+
+    auto file = std::make_shared<boost::asio::stream_file>(io);
+    boost::system::error_code ec;
+    file->open(path.string(),
+               boost::asio::stream_file::write_only |
+                   boost::asio::stream_file::create |
+                   boost::asio::stream_file::truncate,
+               ec);
+    if (ec)
+    {
+        lg2::error("Failed to open file for async serialization: {FILE} {ERR}",
+                   "FILE", path, "ERR", ec.message());
+        return;
+    }
+
+    auto buf = std::make_shared<std::string>(std::move(buffer));
+    auto pathCopy = path;
+    boost::asio::async_write(
+        *file, boost::asio::buffer(*buf),
+        [file, buf, pathCopy](boost::system::error_code writeEc, std::size_t) {
+            if (writeEc)
+            {
+                lg2::error("Async serialize write failed: {FILE} {ERR}", "FILE",
+                           pathCopy, "ERR", writeEc.message());
+            }
+        });
 }
 
 bool deserialize(const fs::path& path, Manager& entry)

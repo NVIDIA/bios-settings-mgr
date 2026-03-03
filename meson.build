@@ -38,6 +38,10 @@ boost_args = [
     '-DBOOST_SYSTEM_NO_DEPRECATED',
 ]
 
+# io_uring enables async file I/O without threads (OpenBMC preferred)
+liburing = dependency('liburing', required: true)
+boost_args += '-DBOOST_ASIO_HAS_IO_URING'
+
 deps = [
     dependency('boost'),
     dependency('phosphor-dbus-interfaces'),
@@ -70,6 +74,7 @@ if not has_cereal
     cereal = cereal_proj.dependency('cereal')
 endif
 deps += cereal
+deps += liburing
 
 src_files = [
     'src/main.cpp',

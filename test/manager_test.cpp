@@ -805,27 +805,6 @@ TEST_F(ManagerTest, ConvertBiosDataToVersion1)
     EXPECT_EQ(std::get<2>(std::get<7>(newTuple)[0]), "");
 }
 
-TEST_F(ManagerTest, ConvertBiosDataToVersion0)
-{
-    Manager::BaseTable newTable;
-    std::vector<
-        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
-        newOptions;
-    newOptions.emplace_back(BoundType::OneOf, std::string("Value1"), "VDN1");
-
-    newTable["TestAttr"] = std::make_tuple(
-        AttributeType::String, false, "DisplayName", "Description", "MenuPath",
-        std::variant<int64_t, std::string>(std::string("Current")),
-        std::variant<int64_t, std::string>(std::string("Default")), newOptions);
-
-    Manager::oldBaseTable oldTable;
-    manager->convertBiosDataToVersion0(oldTable, newTable);
-
-    EXPECT_NE(oldTable.find("TestAttr"), oldTable.end());
-    auto& oldTuple = oldTable["TestAttr"];
-    EXPECT_EQ(std::get<7>(oldTuple).size(), 1);
-}
-
 TEST_F(ManagerTest, ConvertBiosDataToVersion1WithIntegerAttribute)
 {
     Manager::oldBaseTable oldTable;
@@ -881,29 +860,6 @@ TEST_F(ManagerTest, ConvertBiosDataToVersion1WithIntegerAndStringAttributes)
         std::holds_alternative<int64_t>(std::get<5>(newTable["IntAttr"])));
     EXPECT_TRUE(
         std::holds_alternative<std::string>(std::get<5>(newTable["StrAttr"])));
-}
-
-TEST_F(ManagerTest, ConvertBiosDataToVersion0WithIntegerAttribute)
-{
-    Manager::BaseTable newTable;
-    std::vector<
-        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
-        newOptions;
-    newOptions.emplace_back(BoundType::LowerBound, int64_t(0), "VDN1");
-
-    newTable["IntAttr"] = std::make_tuple(
-        AttributeType::Integer, false, "DisplayName", "Description", "MenuPath",
-        std::variant<int64_t, std::string>(int64_t(50)),
-        std::variant<int64_t, std::string>(int64_t(50)), newOptions);
-
-    Manager::oldBaseTable oldTable;
-    manager->convertBiosDataToVersion0(oldTable, newTable);
-
-    EXPECT_NE(oldTable.find("IntAttr"), oldTable.end());
-    auto& oldTuple = oldTable["IntAttr"];
-    EXPECT_EQ(std::get<7>(oldTuple).size(), 1);
-    EXPECT_TRUE(std::holds_alternative<int64_t>(std::get<5>(oldTuple)));
-    EXPECT_TRUE(std::holds_alternative<int64_t>(std::get<6>(oldTuple)));
 }
 
 TEST_F(ManagerTest, CreateBootOptionWithSpecialCharacters)

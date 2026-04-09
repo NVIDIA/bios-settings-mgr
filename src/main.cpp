@@ -13,7 +13,6 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 */
-#include "configuration.h"
 
 #include "bootvalidflag.hpp"
 #include "config.hpp"
@@ -71,8 +70,7 @@ int main(int argc, char** argv)
      * Object path : /xyz/openbmc_project/bios_config/secure_boot
      * Interface : xyz.openbmc_project.BIOSConfig.SecureBoot
      */
-    bios_config_sec::SecureBoot secureboot(objectServer, systemBus,
-                                           persistPath);
+    bios_config::SecureBoot secureboot(objectServer, systemBus, persistPath);
 #endif
 
     io.run();

@@ -106,7 +106,6 @@ void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
 
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
         baseBIOSTable(baseTable, true);
-
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
         pendingAttributes(pendingAttrs, true);
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
@@ -274,7 +273,7 @@ bool deserialize(const fs::path& path, Manager& entry)
     }
     catch (const std::exception& e)
     {
-        lg2::error("Failed to serialize: {ERROR}", "ERROR", e);
+        lg2::error("Failed to deserialize: {ERROR}", "ERROR", e);
         fs::remove(path);
         return false;
     }

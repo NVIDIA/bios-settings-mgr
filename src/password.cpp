@@ -225,7 +225,7 @@ void Password::changePassword(std::string userName, std::string currentPassword,
         json["IsAdminPwdChanged"] = true;
 
         std::ofstream ofs(seedFile.c_str(), std::ios::out);
-        const auto& writeData = json.dump();
+        const auto& writeData = json.dump(4);
         ofs << writeData;
         ofs.close();
         // send redfish event
@@ -241,9 +241,12 @@ Password::Password(sdbusplus::asio::object_server& objectServer,
                    std::shared_ptr<sdbusplus::asio::connection>& systemBus,
                    std::string persistPath) :
     sdbusplus::xyz::openbmc_project::BIOSConfig::server::Password(
-        *systemBus, objectPathPwd),
-    objServer(objectServer), systemBus(systemBus)
+        *systemBus, objectPathPwd)
 {
+    // unused today; ABI kept to match main.cpp
+    (void)objectServer;
+    (void)systemBus;
+
     lg2::debug("BIOS config password is running");
     try
     {

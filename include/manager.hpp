@@ -204,16 +204,6 @@ class Manager : public Base
     void convertBiosDataToVersion1(Manager::oldBaseTable biosTbl,
                                    Manager::BaseTable& baseTable);
 
-    /** @brief Convert the VDN supported Base BIOS table to old Base BIOS table
-     *
-     *  @param[in] biosTbl - Old Base BIOS table (without VDN)
-     *  @param[in] baseTable - Recently supported Base BIOS table (with VDN)
-     *
-     *  @return void
-     */
-    void convertBiosDataToVersion0(Manager::oldBaseTable& baseTable,
-                                   Manager::BaseTable& biosTbl);
-
   private:
     /** @enum Index into the fields in the BaseBIOSTable
      */

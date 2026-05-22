@@ -35,7 +35,7 @@ if gtest_dep.found() and gmock_dep.found()
     if not has_cereal
         cereal_opts = import('cmake').subproject_options()
         cereal_opts.add_cmake_defines(
-            {'BUILD_TESTS' : 'OFF', 'SKIP_PERFORMANCE_COMPARISON' : 'ON'},
+            {'BUILD_TESTS': 'OFF', 'SKIP_PERFORMANCE_COMPARISON': 'ON'},
         )
         cereal_proj = import('cmake').subproject(
             'cereal',

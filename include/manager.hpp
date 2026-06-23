@@ -25,6 +25,7 @@
 #include <xyz/openbmc_project/BIOSConfig/Manager/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/SecureBoot/server.hpp>
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #define BIOS_CONFIG_VERSION_1 1
@@ -87,6 +88,8 @@ class Manager : public Base
     using PendingValue = std::variant<int64_t, std::string>;
     using AttributeDetails =
         std::tuple<AttributeType, CurrentValue, PendingValue>;
+    using AllAttributes =
+        std::map<std::string, std::tuple<AttributeType, CurrentValue>>;
     using BootOrderType = std::vector<std::string>;
     using BootOptionDataType =
         std::map<std::string, BootOptionDbus::PropertiesVariant>;
@@ -126,6 +129,13 @@ class Manager : public Base
      *          current value, pending value. On error, throw exception
      */
     AttributeDetails getAttribute(AttributeName attribute) override;
+
+    /** @brief Get the details of all BIOS attributes
+     *
+     *  @return On success, return the attributes with their type and current
+     *          value. On error, throw exception.
+     */
+    AllAttributes getAllAttributes() override;
 
     /** @brief Set the BaseBIOSTable property and clears the PendingAttributes
      *         property
@@ -215,6 +225,10 @@ class Manager : public Base
                                    Manager::BaseTable& biosTbl);
 
   private:
+    template <class Archive>
+    friend void load(Archive& archive, Manager& entry,
+                     const std::uint32_t version);
+
     /** @enum Index into the fields in the BaseBIOSTable
      */
     enum class Index : uint8_t
@@ -233,6 +247,9 @@ class Manager : public Base
     std::shared_ptr<sdbusplus::asio::connection>& systemBus;
     std::filesystem::path biosFile;
     BootOptionsType bootOptionValues;
+    AllAttributes allAttributesCache;
+
+    void cacheAllAttributes(const BaseTable& baseTable);
 
   protected:
     // Made protected to enable unit testing

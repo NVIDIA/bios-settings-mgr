@@ -133,9 +133,36 @@ TEST_F(ManagerSerializeTest, SerializeAndDeserializeRoundTrip)
     }
 }
 
+TEST_F(ManagerSerializeTest, DeserializeCachesAllAttributes)
+{
+    Manager::BaseTable table;
+    table["TestAttr"] = std::make_tuple(
+        AttributeType::String, false, "DisplayName", "Description", "MenuPath",
+        std::variant<int64_t, std::string>(std::string("Serialized")),
+        std::variant<int64_t, std::string>(std::string("Default")),
+        std::vector<std::tuple<BoundType, std::variant<int64_t, std::string>,
+                               std::string>>());
+    manager->sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
+        baseBIOSTable(table, true);
+    serialize(*manager, serializePath);
+
+    manager.reset();
+
+    auto manager2 =
+        std::make_unique<Manager>(*objServer, systemBus, loadPath.string());
+    ASSERT_TRUE(deserialize(serializePath, *manager2));
+
+    auto attributes = manager2->getAllAttributes();
+    auto attrIter = attributes.find("TestAttr");
+    ASSERT_NE(attrIter, attributes.end());
+    EXPECT_EQ(std::get<std::string>(std::get<1>(attrIter->second)),
+              "Serialized");
+}
+
 TEST_F(ManagerSerializeTest, SerializeToBufferSucceedsAndRoundTrips)
 {
-    manager->enableAfterReset(true);
+    manager->sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
+        enableAfterReset(true, true);
     std::string buffer;
     bool ok = serializeToBuffer(*manager, buffer);
     EXPECT_TRUE(ok);
@@ -152,7 +179,8 @@ TEST_F(ManagerSerializeTest, SerializeToBufferSucceedsAndRoundTrips)
     bool result = deserialize(serializePath, *manager2);
     if (result)
     {
-        EXPECT_TRUE(manager2->enableAfterReset(true));
+        EXPECT_TRUE(manager2->sdbusplus::xyz::openbmc_project::BIOSConfig::
+                        server::Manager::enableAfterReset());
     }
 }
 

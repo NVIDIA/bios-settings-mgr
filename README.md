@@ -45,6 +45,7 @@ xyz.openbmc_project.BIOSConfig.Manager
 
 - **SetAttribute** Sets a specific BIOS attribute to a new value.
 - **GetAttribute** Retrieves the current and pending values of a BIOS attribute.
+- **GetAllAttributes** Retrieves all BIOS attribute types and current values.
 
 ### Properties
 

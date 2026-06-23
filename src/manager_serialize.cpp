@@ -104,8 +104,9 @@ void load(Archive& archive, Manager& entry, const std::uint32_t /*version*/)
         credentialBootstrapFlag = true;
     }
 
-    entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
-        baseBIOSTable(baseTable, true);
+    auto appliedBaseTable = entry.sdbusplus::xyz::openbmc_project::BIOSConfig::
+                                server::Manager::baseBIOSTable(baseTable, true);
+    entry.cacheAllAttributes(appliedBaseTable);
 
     entry.sdbusplus::xyz::openbmc_project::BIOSConfig::server::Manager::
         pendingAttributes(pendingAttrs, true);

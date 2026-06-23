@@ -400,6 +400,71 @@ TEST_F(ManagerTest, GetAttributeWithPendingValue)
     EXPECT_EQ(std::get<std::string>(std::get<2>(details)), "PendingValue");
 }
 
+TEST_F(ManagerTest, GetAllAttributesReturnsTypesAndCurrentValues)
+{
+    Manager::BaseTable table;
+    table["StringAttr"] = std::make_tuple(
+        AttributeType::String, false, "DisplayName", "Description", "MenuPath",
+        std::variant<int64_t, std::string>(std::string("Current")),
+        std::variant<int64_t, std::string>(std::string("Default")),
+        std::vector<std::tuple<BoundType, std::variant<int64_t, std::string>,
+                               std::string>>());
+
+    table["IntAttr"] = std::make_tuple(
+        AttributeType::Integer, false, "DisplayName", "Description", "MenuPath",
+        std::variant<int64_t, std::string>(int64_t(42)),
+        std::variant<int64_t, std::string>(int64_t(0)),
+        std::vector<std::tuple<BoundType, std::variant<int64_t, std::string>,
+                               std::string>>());
+
+    manager->baseBIOSTable(table);
+
+    auto attributes = manager->getAllAttributes();
+
+    ASSERT_EQ(attributes.size(), 2);
+
+    auto stringIter = attributes.find("StringAttr");
+    ASSERT_NE(stringIter, attributes.end());
+    EXPECT_EQ(std::get<0>(stringIter->second), AttributeType::String);
+    EXPECT_EQ(std::get<std::string>(std::get<1>(stringIter->second)),
+              "Current");
+
+    auto integerIter = attributes.find("IntAttr");
+    ASSERT_NE(integerIter, attributes.end());
+    EXPECT_EQ(std::get<0>(integerIter->second), AttributeType::Integer);
+    EXPECT_EQ(std::get<int64_t>(std::get<1>(integerIter->second)), 42);
+}
+
+TEST_F(ManagerTest, BaseBiosTableCachesAllAttributes)
+{
+    Manager::BaseTable table;
+    table["StringAttr"] = std::make_tuple(
+        AttributeType::String, false, "DisplayName", "Description", "MenuPath",
+        std::variant<int64_t, std::string>(std::string("Current")),
+        std::variant<int64_t, std::string>(std::string("Default")),
+        std::vector<std::tuple<BoundType, std::variant<int64_t, std::string>,
+                               std::string>>());
+    manager->baseBIOSTable(table);
+
+    auto attributes = manager->getAllAttributes();
+    auto attrIter = attributes.find("StringAttr");
+    ASSERT_NE(attrIter, attributes.end());
+    EXPECT_EQ(std::get<std::string>(std::get<1>(attrIter->second)), "Current");
+
+    table["StringAttr"] = std::make_tuple(
+        AttributeType::String, false, "DisplayName", "Description", "MenuPath",
+        std::variant<int64_t, std::string>(std::string("Updated")),
+        std::variant<int64_t, std::string>(std::string("Default")),
+        std::vector<std::tuple<BoundType, std::variant<int64_t, std::string>,
+                               std::string>>());
+    manager->baseBIOSTable(table);
+
+    attributes = manager->getAllAttributes();
+    attrIter = attributes.find("StringAttr");
+    ASSERT_NE(attrIter, attributes.end());
+    EXPECT_EQ(std::get<std::string>(std::get<1>(attrIter->second)), "Updated");
+}
+
 TEST_F(ManagerTest, PendingAttributesValidatesEnumOption)
 {
     Manager::BaseTable table;

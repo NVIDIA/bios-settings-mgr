@@ -29,6 +29,7 @@
 #include <sdbusplus/asio/object_server.hpp>
 
 #include <regex>
+#include <utility>
 
 namespace bios_config
 {
@@ -98,10 +99,32 @@ Manager::AttributeDetails Manager::getAttribute(AttributeName attribute)
     return value;
 }
 
+void Manager::cacheAllAttributes(const BaseTable& baseTable)
+{
+    Manager::AllAttributes attributes;
+
+    for (const auto& [attribute, details] : baseTable)
+    {
+        attributes.emplace(
+            attribute,
+            std::make_tuple(
+                std::get<static_cast<uint8_t>(Index::attributeType)>(details),
+                std::get<static_cast<uint8_t>(Index::currentValue)>(details)));
+    }
+
+    allAttributesCache = std::move(attributes);
+}
+
+Manager::AllAttributes Manager::getAllAttributes()
+{
+    return allAttributesCache;
+}
+
 Manager::BaseTable Manager::baseBIOSTable(BaseTable value)
 {
     pendingAttributes({});
     auto baseTable = Base::baseBIOSTable(value, false);
+    cacheAllAttributes(baseTable);
     asyncSerialize(systemBus->get_io_context(), *this, biosFile);
     Base::resetBIOSSettings(Base::ResetFlag::NoAction);
     return baseTable;

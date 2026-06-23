@@ -184,7 +184,7 @@ void BootValidFlag::setTimer(sdbusplus::message::message& msg)
 
 void BootValidFlag::setupMatches(sdbusplus::bus_t& dbusConnection)
 {
-    validUpdatedMatch = std::make_unique<sdbusplus::bus::match::match>(
+    validUpdatedMatch = std::make_unique<sdbusplus::bus::match_t>(
         dbusConnection,
         sdbusplus::bus::match::rules::type::signal() +
             sdbusplus::bus::match::rules::member(
@@ -197,7 +197,7 @@ void BootValidFlag::setupMatches(sdbusplus::bus_t& dbusConnection)
         [this](sdbusplus::message::message& msg) { this->setTimer(msg); });
 
     lg2::info("Setting up soft reset match");
-    softResetMatch = std::make_unique<sdbusplus::bus::match::match>(
+    softResetMatch = std::make_unique<sdbusplus::bus::match_t>(
         dbusConnection,
         sdbusplus::bus::match::rules::type::signal() +
             sdbusplus::bus::match::rules::member(

@@ -1,5 +1,6 @@
 #include "manager_serialize.hpp"
 
+#include <boost/asio/any_io_executor.hpp>
 #include <boost/asio/stream_file.hpp>
 #include <boost/asio/write.hpp>
 #include <cereal/archives/binary.hpp>
@@ -13,12 +14,166 @@
 
 #include <fstream>
 #include <map>
+#include <memory>
+#include <optional>
 #include <sstream>
+#include <system_error>
+#include <utility>
 #include <variant>
 #include <vector>
 
 namespace bios_config
 {
+
+namespace
+{
+
+struct AsyncSerializeState
+{
+    bool writeInProgress = false;
+    std::optional<std::string> pendingBuffer;
+};
+
+using AsyncSerializeStateMap =
+    std::map<std::string, std::weak_ptr<AsyncSerializeState>>;
+
+AsyncSerializeStateMap& asyncSerializeStates()
+{
+    static AsyncSerializeStateMap states;
+    return states;
+}
+
+std::string asyncSerializeKey(const fs::path& path)
+{
+    return path.lexically_normal().string();
+}
+
+fs::path asyncSerializeTempPath(const fs::path& path)
+{
+    fs::path tempPath = path;
+    tempPath += ".tmp";
+    return tempPath;
+}
+
+void startAsyncSerializeWrite(boost::asio::any_io_executor executor,
+                              const fs::path& path, const std::string& key,
+                              std::shared_ptr<AsyncSerializeState> state,
+                              std::string buffer);
+
+void finishAsyncSerializeWrite(boost::asio::any_io_executor executor,
+                               const fs::path& path, const std::string& key,
+                               std::shared_ptr<AsyncSerializeState> state)
+{
+    if (state->pendingBuffer)
+    {
+        auto nextBuffer = std::move(*state->pendingBuffer);
+        state->pendingBuffer.reset();
+        startAsyncSerializeWrite(executor, path, key, std::move(state),
+                                 std::move(nextBuffer));
+        return;
+    }
+
+    state->writeInProgress = false;
+    asyncSerializeStates().erase(key);
+}
+
+void startAsyncSerializeWrite(boost::asio::any_io_executor executor,
+                              const fs::path& path, const std::string& key,
+                              std::shared_ptr<AsyncSerializeState> state,
+                              std::string buffer)
+{
+    const auto tempPath = asyncSerializeTempPath(path);
+    std::shared_ptr<boost::asio::stream_file> file;
+    try
+    {
+        file = std::make_shared<boost::asio::stream_file>(executor);
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error(
+            "Failed to create async serialize file backend: {FILE} {ERR}",
+            "FILE", tempPath, "ERR", e.what());
+        finishAsyncSerializeWrite(executor, path, key, std::move(state));
+        return;
+    }
+
+    boost::system::error_code ec;
+    file->open(tempPath.string(),
+               boost::asio::stream_file::write_only |
+                   boost::asio::stream_file::create |
+                   boost::asio::stream_file::truncate,
+               ec);
+    if (ec)
+    {
+        lg2::error(
+            "Failed to open temp file for async serialization: {FILE} {ERR}",
+            "FILE", tempPath, "ERR", ec.message());
+        finishAsyncSerializeWrite(executor, path, key, std::move(state));
+        return;
+    }
+
+    auto buf = std::make_shared<std::string>(std::move(buffer));
+
+    boost::asio::async_write(
+        *file, boost::asio::buffer(*buf),
+        [executor, file, buf, path, tempPath, key, state = std::move(state)](
+            boost::system::error_code writeEc, std::size_t) {
+            if (writeEc)
+            {
+                lg2::error("Async serialize write failed: {FILE} {ERR}", "FILE",
+                           tempPath, "ERR", writeEc.message());
+                boost::system::error_code closeEc;
+                file->close(closeEc);
+                std::error_code removeEc;
+                fs::remove(tempPath, removeEc);
+                finishAsyncSerializeWrite(executor, path, key,
+                                          std::move(state));
+                return;
+            }
+
+            boost::system::error_code closeEc;
+            file->close(closeEc);
+            // OS-level close failures are not deterministic in UT.
+            if (closeEc) // GCOVR_EXCL_BR_LINE
+            {
+                lg2::error("Async serialize close failed: {FILE} {ERR}", "FILE",
+                           tempPath, "ERR", closeEc.message());
+                std::error_code removeEc;
+                fs::remove(tempPath, removeEc);
+                finishAsyncSerializeWrite(executor, path, key,
+                                          std::move(state));
+                return;
+            }
+
+            if (state->pendingBuffer)
+            {
+                std::error_code removeEc;
+                fs::remove(tempPath, removeEc);
+                finishAsyncSerializeWrite(executor, path, key,
+                                          std::move(state));
+                return;
+            }
+
+            std::error_code renameEc;
+            fs::rename(tempPath, path, renameEc);
+            if (renameEc)
+            {
+                lg2::error(
+                    "Async serialize rename failed: {TEMP_FILE} -> {FILE} {ERR}",
+                    "TEMP_FILE", tempPath, "FILE", path, "ERR",
+                    renameEc.message());
+                std::error_code removeEc;
+                fs::remove(tempPath, removeEc);
+                finishAsyncSerializeWrite(executor, path, key,
+                                          std::move(state));
+                return;
+            }
+
+            finishAsyncSerializeWrite(executor, path, key, std::move(state));
+        });
+}
+
+} // namespace
 
 // BIOS_CONFIG_VERSION is introduced to manage backward compatibility with
 // old BaseTableV1 where had not added the support version flag in the archived
@@ -193,31 +348,24 @@ void asyncSerialize(boost::asio::io_context& io, const Manager& obj,
         return;
     }
 
-    auto file = std::make_shared<boost::asio::stream_file>(io);
-    boost::system::error_code ec;
-    file->open(path.string(),
-               boost::asio::stream_file::write_only |
-                   boost::asio::stream_file::create |
-                   boost::asio::stream_file::truncate,
-               ec);
-    if (ec)
+    const auto key = asyncSerializeKey(path);
+    auto& states = asyncSerializeStates();
+    auto state = states[key].lock();
+    if (!state)
     {
-        lg2::error("Failed to open file for async serialization: {FILE} {ERR}",
-                   "FILE", path, "ERR", ec.message());
+        state = std::make_shared<AsyncSerializeState>();
+        states[key] = state;
+    }
+
+    if (state->writeInProgress)
+    {
+        state->pendingBuffer = std::move(buffer);
         return;
     }
 
-    auto buf = std::make_shared<std::string>(std::move(buffer));
-    auto pathCopy = path;
-    boost::asio::async_write(
-        *file, boost::asio::buffer(*buf),
-        [file, buf, pathCopy](boost::system::error_code writeEc, std::size_t) {
-            if (writeEc)
-            {
-                lg2::error("Async serialize write failed: {FILE} {ERR}", "FILE",
-                           pathCopy, "ERR", writeEc.message());
-            }
-        });
+    state->writeInProgress = true;
+    startAsyncSerializeWrite(io.get_executor(), path, key, state,
+                             std::move(buffer));
 }
 
 bool deserialize(const fs::path& path, Manager& entry)

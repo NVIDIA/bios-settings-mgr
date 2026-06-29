@@ -104,6 +104,9 @@ if gtest_dep.found() and gmock_dep.found()
                 cpp_args: boost_args,
             ),
             protocol: 'gtest',
+            # Tests create sdbusplus/asio fixtures backed by io_uring; running
+            # binaries concurrently can exhaust CI io_uring resources.
+            is_parallel: false,
         )
     endforeach
 

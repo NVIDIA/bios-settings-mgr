@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <system_error>
 
 namespace bios_config::test
 {
@@ -77,11 +78,73 @@ class ManagerSerializeTest : public BiosConfigTest
 
     void TearDown() override
     {
+        drainIoContext();
+
         if (std::filesystem::exists(serializePath))
         {
             std::filesystem::remove(serializePath);
         }
         BiosConfigTest::TearDown();
+    }
+
+    static std::filesystem::path asyncSerializeTempPath(
+        std::filesystem::path path)
+    {
+        path += ".tmp";
+        return path;
+    }
+
+    bool hasAsyncSerializeTempFiles() const
+    {
+        if (!std::filesystem::exists(tempDir))
+        {
+            return false;
+        }
+
+        for (const auto& entry :
+             std::filesystem::recursive_directory_iterator(tempDir))
+        {
+            if (entry.path().string().ends_with(".tmp"))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void drainIoContext()
+    {
+        constexpr auto step = std::chrono::milliseconds(50);
+        constexpr auto timeout = std::chrono::seconds(5);
+        for (auto waited = std::chrono::milliseconds(0); waited < timeout;
+             waited += step)
+        {
+            ioContext.restart();
+            const auto handlers = ioContext.run_for(step);
+            if (handlers == 0 && !hasAsyncSerializeTempFiles())
+            {
+                break;
+            }
+        }
+    }
+
+    bool drainUntilFileHasContent(const std::filesystem::path& path)
+    {
+        constexpr auto step = std::chrono::milliseconds(50);
+        constexpr auto timeout = std::chrono::seconds(5);
+        for (auto waited = std::chrono::milliseconds(0); waited < timeout;
+             waited += step)
+        {
+            ioContext.restart();
+            const auto handlers = ioContext.run_for(step);
+            if (handlers == 0 && std::filesystem::exists(path) &&
+                std::filesystem::file_size(path) > 0u)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     std::unique_ptr<Manager> manager;
@@ -188,11 +251,7 @@ TEST_F(ManagerSerializeTest, AsyncSerializeCreatesFileWithContent)
 {
     manager->enableAfterReset(true);
     asyncSerialize(ioContext, *manager, serializePath);
-    ioContext.restart();
-    ioContext.run_for(std::chrono::milliseconds(500));
-
-    EXPECT_TRUE(std::filesystem::exists(serializePath));
-    EXPECT_GT(std::filesystem::file_size(serializePath), 0u);
+    ASSERT_TRUE(drainUntilFileHasContent(serializePath));
 
     manager.reset();
     auto manager2 =
@@ -204,15 +263,127 @@ TEST_F(ManagerSerializeTest, AsyncSerializeCreatesFileWithContent)
     }
 }
 
-TEST_F(ManagerSerializeTest, AsyncSerializeHandlesOpenError)
+TEST_F(ManagerSerializeTest, AsyncSerializeKeepsLatestPendingSnapshot)
+{
+    manager->ManagerServer::enableAfterReset(true, false);
+    manager->ManagerServer::credentialBootstrap(false, false);
+    asyncSerialize(ioContext, *manager, serializePath);
+
+    manager->ManagerServer::enableAfterReset(false, false);
+    manager->ManagerServer::credentialBootstrap(false, false);
+    asyncSerialize(ioContext, *manager, serializePath);
+
+    manager->ManagerServer::enableAfterReset(false, false);
+    manager->ManagerServer::credentialBootstrap(true, false);
+    asyncSerialize(ioContext, *manager, serializePath);
+
+    ASSERT_TRUE(drainUntilFileHasContent(serializePath));
+
+    manager.reset();
+    auto manager2 =
+        std::make_unique<Manager>(*objServer, systemBus, loadPath.string());
+    ASSERT_TRUE(deserialize(serializePath, *manager2));
+
+    EXPECT_FALSE(manager2->ManagerServer::enableAfterReset());
+    EXPECT_TRUE(manager2->ManagerServer::credentialBootstrap());
+}
+
+TEST_F(ManagerSerializeTest, AsyncSerializeHandlesOpenFailureAndCanRetry)
+{
+    const auto targetPath = persistPath / "missing_parent" / "biosData";
+    const auto tempPath = asyncSerializeTempPath(targetPath);
+
+    asyncSerialize(ioContext, *manager, targetPath);
+    drainIoContext();
+
+    EXPECT_FALSE(std::filesystem::exists(targetPath.parent_path()));
+    EXPECT_FALSE(std::filesystem::exists(targetPath));
+    EXPECT_FALSE(std::filesystem::exists(tempPath));
+
+    std::filesystem::create_directories(targetPath.parent_path());
+    manager->ManagerServer::enableAfterReset(true, false);
+    asyncSerialize(ioContext, *manager, targetPath);
+    ASSERT_TRUE(drainUntilFileHasContent(targetPath));
+
+    manager.reset();
+    auto manager2 =
+        std::make_unique<Manager>(*objServer, systemBus, loadPath.string());
+    ASSERT_TRUE(deserialize(targetPath, *manager2));
+    EXPECT_TRUE(manager2->ManagerServer::enableAfterReset());
+}
+
+TEST_F(ManagerSerializeTest,
+       AsyncSerializeWriteFailurePersistsLatestPendingSnapshot)
+{
+    const std::filesystem::path fullDevice = "/dev/full";
+    if (!std::filesystem::exists(fullDevice))
+    {
+        GTEST_SKIP() << "/dev/full is not available";
+    }
+
+    const auto tempPath = asyncSerializeTempPath(serializePath);
+    std::error_code ec;
+    std::filesystem::create_symlink(fullDevice, tempPath, ec);
+    if (ec)
+    {
+        GTEST_SKIP() << "Cannot create temp symlink: " << ec.message();
+    }
+
+    manager->ManagerServer::enableAfterReset(true, false);
+    manager->ManagerServer::credentialBootstrap(false, false);
+    asyncSerialize(ioContext, *manager, serializePath);
+
+    manager->ManagerServer::enableAfterReset(false, false);
+    manager->ManagerServer::credentialBootstrap(true, false);
+    asyncSerialize(ioContext, *manager, serializePath);
+
+    ASSERT_TRUE(drainUntilFileHasContent(serializePath));
+    EXPECT_FALSE(std::filesystem::exists(tempPath));
+
+    manager.reset();
+    auto manager2 =
+        std::make_unique<Manager>(*objServer, systemBus, loadPath.string());
+    ASSERT_TRUE(deserialize(serializePath, *manager2));
+
+    EXPECT_FALSE(manager2->ManagerServer::enableAfterReset());
+    EXPECT_TRUE(manager2->ManagerServer::credentialBootstrap());
+}
+
+TEST_F(ManagerSerializeTest, AsyncSerializeRenameFailureRemovesTempFile)
 {
     std::filesystem::path dirPath = persistPath / "subdir";
+    const auto tempPath = asyncSerializeTempPath(dirPath);
+
     std::filesystem::create_directories(dirPath);
     asyncSerialize(ioContext, *manager, dirPath);
-    ioContext.restart();
-    ioContext.run_for(std::chrono::milliseconds(200));
+    drainIoContext();
 
     EXPECT_TRUE(std::filesystem::is_directory(dirPath));
+    EXPECT_FALSE(std::filesystem::exists(tempPath));
+}
+
+TEST_F(ManagerSerializeTest, AsyncSerializeRenameFailureCanRetry)
+{
+    std::filesystem::path dirPath = persistPath / "rename_retry";
+    const auto tempPath = asyncSerializeTempPath(dirPath);
+
+    std::filesystem::create_directories(dirPath);
+    asyncSerialize(ioContext, *manager, dirPath);
+    drainIoContext();
+
+    EXPECT_TRUE(std::filesystem::is_directory(dirPath));
+    EXPECT_FALSE(std::filesystem::exists(tempPath));
+
+    std::filesystem::remove(dirPath);
+    manager->ManagerServer::credentialBootstrap(true, false);
+    asyncSerialize(ioContext, *manager, dirPath);
+    ASSERT_TRUE(drainUntilFileHasContent(dirPath));
+
+    manager.reset();
+    auto manager2 =
+        std::make_unique<Manager>(*objServer, systemBus, loadPath.string());
+    ASSERT_TRUE(deserialize(dirPath, *manager2));
+    EXPECT_TRUE(manager2->ManagerServer::credentialBootstrap());
 }
 
 TEST_F(ManagerSerializeTest, DeserializeReturnsFalseWhenFileDoesNotExist)
@@ -339,6 +510,23 @@ TEST_F(ManagerSerializeTest, DeserializeHandlesCerealException)
     EXPECT_FALSE(std::filesystem::exists(serializePath));
 }
 
+TEST_F(ManagerSerializeTest, DeserializeRemovesSymlinkLoopOnFilesystemError)
+{
+    const auto loopPath = persistPath / "loop";
+    std::error_code ec;
+    std::filesystem::create_symlink(loopPath, loopPath, ec);
+    if (ec)
+    {
+        GTEST_SKIP() << "Cannot create symlink loop: " << ec.message();
+    }
+
+    EXPECT_FALSE(deserialize(loopPath, *manager));
+
+    ec.clear();
+    const auto status = std::filesystem::symlink_status(loopPath, ec);
+    EXPECT_EQ(status.type(), std::filesystem::file_type::not_found);
+}
+
 TEST_F(ManagerSerializeTest, DeserializeHandlesFileOpenFailure)
 {
     std::filesystem::path testPath = persistPath / "test_file";
@@ -395,10 +583,12 @@ TEST_F(ManagerSerializeTest, DeserializeV2FormatSucceeds)
 {
     std::ofstream os(serializePath, std::ios::binary);
     cereal::BinaryOutputArchive archive(os);
+    std::uint32_t classVersion = 0;
     std::uint32_t version = BIOS_CONFIG_VERSION_2;
     Manager::BaseTable baseTable;
     Manager::PendingAttributes pendingAttrs;
     bool enableAfterResetFlag = true;
+    archive(classVersion);
     archive(version);
     archive(baseTable, pendingAttrs, enableAfterResetFlag);
     Manager::BootOrderType bootOrderValue;
@@ -424,11 +614,11 @@ TEST_F(ManagerSerializeTest, DeserializeV1FormatSucceeds)
 {
     std::ofstream os(serializePath, std::ios::binary);
     cereal::BinaryOutputArchive archive(os);
-    std::uint32_t version = 0;
+    std::uint32_t classVersion = 0;
     Manager::oldBaseTable baseTableV1;
     Manager::PendingAttributes pendingAttrs;
     bool enableAfterResetFlag = true;
-    archive(version);
+    archive(classVersion);
     archive(baseTableV1, pendingAttrs, enableAfterResetFlag);
     Manager::BootOrderType bootOrderValue;
     Manager::BootOrderType pendingBootOrderValue;

@@ -89,6 +89,41 @@ class BootValidFlag
      *  @param[in] msg - DBUS Bus Object.
      */
     void cancelTimer(sdbusplus::message::message& msg);
+
+    /** @brief Called when the initial BootValidTimeoutOverride property
+     *  check succeeds. Creates the timer and starts monitoring.
+     *  @param[in] io - io_context used to construct the timer.
+     */
+    void onInitSuccess(boost::asio::io_context& io);
+
+    /** @brief Process the one_time Enabled value read from D-Bus.
+     *  Triggers the timeout-flag check when the persistent flag is not set.
+     *  @param[in] oneTimeEnabled - value of the one_time Enabled property.
+     */
+    void processBootFlagOneTimeValue(bool oneTimeEnabled);
+
+    /** @brief Process the BootValidTimeoutOverride value read from D-Bus.
+     *  Clears the boot-valid flag when neither persistent nor timeout-override.
+     *  @param[in] bootFlagTimeoutDis - value of BootValidTimeoutOverride.
+     */
+    void processBootFlagTimeoutValue(bool bootFlagTimeoutDis);
+
+    /** @brief Core logic of setTimer after the D-Bus message is parsed.
+     *  @param[in] changedProperties - map of changed property names to values.
+     */
+    void processSetTimerProperties(
+        const std::map<std::string, std::variant<bool>>& changedProperties);
+
+    /** @brief Core logic of cancelTimer after the D-Bus message is parsed.
+     *  @param[in] changedProperties - map of changed property names to values.
+     */
+    void processCancelTimerProperties(
+        const std::map<std::string, std::variant<bool>>& changedProperties);
+
+    /** @brief Handle the timer async_wait completion.
+     *  @param[in] error - error code from the timer wait.
+     */
+    void processTimerCallback(const boost::system::error_code& error);
 };
 
 } // namespace bios_config_valid

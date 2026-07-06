@@ -386,6 +386,17 @@ TEST_F(ManagerSerializeTest, AsyncSerializeRenameFailureCanRetry)
     EXPECT_TRUE(manager2->ManagerServer::credentialBootstrap());
 }
 
+TEST_F(ManagerSerializeTest, AsyncSerializeHandlesWriteError)
+{
+    manager->ManagerServer::enableAfterReset(true, true);
+
+    asyncSerialize(ioContext, *manager, "/dev/full");
+    ioContext.restart();
+    ioContext.run_for(std::chrono::milliseconds(500));
+
+    SUCCEED();
+}
+
 TEST_F(ManagerSerializeTest, DeserializeReturnsFalseWhenFileDoesNotExist)
 {
     std::filesystem::path nonExistentPath = persistPath / "non_existent_file";
@@ -731,5 +742,4 @@ TEST_F(ManagerSerializeTest, SerializePreservesBootOptionsWithoutPendingEnabled)
         }
     }
 }
-
 } // namespace bios_config::test

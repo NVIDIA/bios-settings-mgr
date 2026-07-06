@@ -1348,4 +1348,69 @@ TEST_F(ManagerTest, DeleteBootOptionRemovesSingleBootOption)
     EXPECT_EQ(bootOptions.find(bootOptionId), bootOptions.end());
 }
 
+// Covers the else { continue; } branch in validateStringOption's BoundType loop
+TEST_F(ManagerTest, ValidateStringOptionIgnoresNonStringBoundTypes)
+{
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::MinStringLength, int64_t(0), "");
+    options.emplace_back(BoundType::MaxStringLength, int64_t(100), "");
+    // Adding a non-string BoundType entry exercises the else { continue; } path
+    options.emplace_back(BoundType::OneOf, std::string("ignored"), "");
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_TRUE(testableMgr->validateStringOption("hello", options));
+}
+
+// Covers the implicit else (no matching BoundType) in validateIntegerOption's
+// loop
+TEST_F(ManagerTest, ValidateIntegerOptionIgnoresUnrecognizedBoundTypes)
+{
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::LowerBound, int64_t(0), "");
+    options.emplace_back(BoundType::UpperBound, int64_t(100), "");
+    options.emplace_back(BoundType::ScalarIncrement, int64_t(1), "");
+    // OneOf is not handled in validateIntegerOption; the else falls through
+    options.emplace_back(BoundType::OneOf, std::string("ignored"), "");
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_TRUE(testableMgr->validateIntegerOption(50, options));
+}
+
+// Covers the path in getAttribute where a pending Integer value exists
+TEST_F(ManagerTest, GetAttributeWithIntegerPendingValue)
+{
+    Manager::BaseTable baseTable;
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::LowerBound, int64_t(0), "");
+    options.emplace_back(BoundType::UpperBound, int64_t(100), "");
+    options.emplace_back(BoundType::ScalarIncrement, int64_t(1), "");
+    baseTable["IntAttr"] = std::make_tuple(
+        Manager::AttributeType::Integer, false, std::string("Display"),
+        std::string("Description"), std::string("MenuPath"),
+        std::variant<int64_t, std::string>(int64_t(10)),
+        std::variant<int64_t, std::string>(int64_t(0)), options);
+    manager->baseBIOSTable(baseTable);
+
+    // Set an integer pending value
+    Manager::PendingAttributes pending;
+    pending["IntAttr"] =
+        std::make_pair(Manager::AttributeType::Integer, int64_t(50));
+    manager->pendingAttributes(pending);
+
+    auto result = manager->getAttribute("IntAttr");
+    EXPECT_EQ(std::get<0>(result), Manager::AttributeType::Integer);
+    // pendingVal should hold the integer 50
+    EXPECT_EQ(std::get<int64_t>(std::get<2>(result)), int64_t(50));
+}
+
 } // namespace bios_config::test

@@ -84,7 +84,7 @@ src_files = [
     'src/secureboot.cpp',
 ]
 
-executable(
+biosconfig_manager_exe = executable(
     'biosconfig-manager',
     src_files,
     implicit_include_directories: true,

@@ -1413,4 +1413,50 @@ TEST_F(ManagerTest, GetAttributeWithIntegerPendingValue)
     EXPECT_EQ(std::get<int64_t>(std::get<2>(result)), int64_t(50));
 }
 
+TEST_F(ManagerTest, PendingAttributesSkipsReadOnlyAttribute)
+{
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::MinStringLength, int64_t(0), "");
+    options.emplace_back(BoundType::MaxStringLength, int64_t(100), "");
+
+    Manager::BaseTable table;
+    table["RoAttr"] = std::make_tuple(
+        AttributeType::String, true, "DisplayName", "Description", "MenuPath",
+        std::variant<int64_t, std::string>(std::string("cur")),
+        std::variant<int64_t, std::string>(std::string("def")), options);
+    table["RwAttr"] = std::make_tuple(
+        AttributeType::String, false, "DisplayName", "Description", "MenuPath",
+        std::variant<int64_t, std::string>(std::string("cur")),
+        std::variant<int64_t, std::string>(std::string("def")), options);
+    manager->baseBIOSTable(table);
+
+    Manager::PendingAttributes pending;
+    pending["RoAttr"] =
+        std::make_tuple(AttributeType::String,
+                        std::variant<int64_t, std::string>(std::string("x")));
+    pending["RwAttr"] =
+        std::make_tuple(AttributeType::String,
+                        std::variant<int64_t, std::string>(std::string("y")));
+    manager->pendingAttributes(pending);
+
+    auto staged = manager->sdbusplus::xyz::openbmc_project::BIOSConfig::server::
+                      Manager::pendingAttributes();
+    EXPECT_EQ(staged.find("RoAttr"), staged.end());
+    EXPECT_NE(staged.find("RwAttr"), staged.end());
+}
+
+TEST_F(ManagerTest, CreateBootOptionRejectsEmptyAndAllIllegalId)
+{
+    // Empty id would build a trailing-slash D-Bus path.
+    EXPECT_THROW(manager->createBootOption(""), std::exception);
+
+    // Characters outside [A-Za-z0-9_] are replaced, not rejected, so an
+    // all-illegal id still yields a usable key.
+    EXPECT_NO_THROW(manager->createBootOption("a-b.c"));
+    auto options = manager->getBootOptionValues();
+    EXPECT_NE(options.find("a_b_c"), options.end());
+}
+
 } // namespace bios_config::test

@@ -85,6 +85,15 @@ class TestablePassword : public Password
   public:
     using Password::Password;
     using Password::verifyPassword;
+
+    // Overload discarding the seed JSON, preserving the three-argument shape.
+    void verifyPassword(std::string userName, std::string currentPassword,
+                        std::string newPassword)
+    {
+        nlohmann::json discarded;
+        Password::verifyPassword(userName, currentPassword, newPassword,
+                                 discarded);
+    }
 };
 
 class PasswordOpenSslFailureTest : public bios_config::test::BiosConfigTest

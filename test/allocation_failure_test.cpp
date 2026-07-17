@@ -243,6 +243,18 @@ class TestablePassword : public bios_config_pwd::Password
     using Password::Password;
 
     using Password::getParam;
+
+    // Overload discarding the seed JSON, preserving the four-argument shape.
+    bool getParam(
+        std::array<uint8_t, bios_config_pwd::maxHashSize>& orgUsrPwdHash,
+        std::array<uint8_t, bios_config_pwd::maxHashSize>& orgAdminPwdHash,
+        std::array<uint8_t, bios_config_pwd::maxSeedSize>& seed,
+        std::string& hashAlgo)
+    {
+        nlohmann::json discarded;
+        return Password::getParam(orgUsrPwdHash, orgAdminPwdHash, seed,
+                                  hashAlgo, discarded);
+    }
 };
 
 TEST_F(AllocationFailureTest, RedfishEventAllocationFailures)

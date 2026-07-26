@@ -221,8 +221,16 @@ void Password::changePassword(std::string userName, std::string currentPassword,
         {
             throw InternalFailure();
         }
-        json["AdminPwdHash"] = mNewPwdHash;
-        json["IsAdminPwdChanged"] = true;
+        if (userName == "AdminPassword")
+        {
+            json["AdminPwdHash"] = mNewPwdHash;
+            json["IsAdminPwdChanged"] = true;
+        }
+        else
+        {
+            json["UserPwdHash"] = mNewPwdHash;
+            json["IsUserPwdChanged"] = true;
+        }
 
         std::ofstream ofs(seedFile.c_str(), std::ios::out);
         const auto& writeData = json.dump(4);

@@ -20,6 +20,10 @@
 #include "xyz/openbmc_project/BIOSConfig/Common/error.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
 
+#include <fcntl.h>
+#include <openssl/crypto.h>
+#include <unistd.h>
+
 #include <boost/algorithm/hex.hpp>
 #include <phosphor-logging/lg2.hpp>
 
@@ -48,8 +52,8 @@ bool Password::compareDigest(const EVP_MD* digestFunc, size_t digestLen,
         throw InternalFailure();
     }
 
-    if (std::memcmp(output.data(), expected.data(),
-                    output.size() * sizeof(uint8_t)) == 0)
+    if (CRYPTO_memcmp(output.data(), expected.data(),
+                      output.size() * sizeof(uint8_t)) == 0)
     {
         return true;
     }
@@ -61,7 +65,7 @@ bool Password::isMatch(const std::array<uint8_t, maxHashSize>& expected,
                        const std::array<uint8_t, maxSeedSize>& seed,
                        const std::string& rawData, const std::string& algo)
 {
-    lg2::error("isMatch");
+    lg2::debug("isMatch");
 
     if (algo == "SHA256")
     {
@@ -81,13 +85,17 @@ bool Password::isMatch(const std::array<uint8_t, maxHashSize>& expected,
 bool Password::getParam(std::array<uint8_t, maxHashSize>& orgUsrPwdHash,
                         std::array<uint8_t, maxHashSize>& orgAdminPwdHash,
                         std::array<uint8_t, maxSeedSize>& seed,
-                        std::string& hashAlgo)
+                        std::string& hashAlgo, nlohmann::json& outJson)
 {
     try
     {
         nlohmann::json json = nullptr;
         std::ifstream ifs(seedFile.c_str());
-        if (ifs.is_open())
+        if (!ifs.is_open())
+        {
+            lg2::error("getParam: unable to open seedFile");
+            return false;
+        }
         {
             try
             {
@@ -99,13 +107,16 @@ bool Password::getParam(std::array<uint8_t, maxHashSize>& orgUsrPwdHash,
                 return false;
             }
 
-            if (!json.is_discarded())
+            if (json.is_discarded())
             {
-                orgUsrPwdHash = json["UserPwdHash"];
-                orgAdminPwdHash = json["AdminPwdHash"];
-                seed = json["Seed"];
-                hashAlgo = json["HashAlgo"];
+                lg2::error("getParam: seedFile JSON is discarded/invalid");
+                return false;
             }
+            orgUsrPwdHash = json["UserPwdHash"];
+            orgAdminPwdHash = json["AdminPwdHash"];
+            seed = json["Seed"];
+            hashAlgo = json["HashAlgo"];
+            outJson = json;
         }
     }
     catch (nlohmann::detail::exception& e)
@@ -137,8 +148,14 @@ bool Password::verifyIntegrityCheck(
 }
 
 void Password::verifyPassword(std::string userName, std::string currentPassword,
-                              std::string newPassword)
+                              std::string newPassword,
+                              nlohmann::json& outSeedJson)
 {
+    if (currentPassword.empty() || newPassword.empty() ||
+        newPassword.length() > maxPasswordLen)
+    {
+        throw InvalidCurrentPassword();
+    }
     if (fs::exists(seedFile.c_str()))
     {
         std::array<uint8_t, maxHashSize> orgUsrPwdHash;
@@ -146,12 +163,13 @@ void Password::verifyPassword(std::string userName, std::string currentPassword,
         std::array<uint8_t, maxSeedSize> seed;
         std::string hashAlgo = "";
 
-        if (getParam(orgUsrPwdHash, orgAdminPwdHash, seed, hashAlgo))
+        if (getParam(orgUsrPwdHash, orgAdminPwdHash, seed, hashAlgo,
+                     outSeedJson))
         {
-            if (orgUsrPwdHash.empty() || orgAdminPwdHash.empty() ||
-                seed.empty() || hashAlgo.empty())
+            if (hashAlgo != "SHA256" && hashAlgo != "SHA384")
             {
-                return;
+                lg2::error("Invalid or missing hashAlgo in seedData");
+                throw InternalFailure();
             }
         }
         else
@@ -195,42 +213,92 @@ void Password::changePassword(std::string userName, std::string currentPassword,
                               std::string newPassword)
 {
     lg2::debug("BIOS config changePassword");
-    verifyPassword(userName, currentPassword, newPassword);
 
-    std::ifstream fs(seedFile.c_str());
-    nlohmann::json json = nullptr;
-
-    if (fs.is_open())
+    if (failedAttempts >= maxFailedAttempts)
     {
-        try
+        if (std::chrono::steady_clock::now() - lockoutStart <
+            failedAttemptWindow)
         {
-            json = nlohmann::json::parse(fs, nullptr, false);
-        }
-        catch (const nlohmann::json::parse_error& e)
-        {
-            lg2::error("Failed to parse JSON file: {ERROR}", "ERROR", e);
+            lg2::error(
+                "changePassword: locked after {MAX} failed attempts; retry later",
+                "MAX", maxFailedAttempts);
             throw InternalFailure();
         }
+        failedAttempts = 0;
+    }
 
-        if (json.is_discarded())
+    if (currentPassword.empty() || newPassword.empty() ||
+        newPassword.length() > maxPasswordLen)
+    {
+        throw InvalidCurrentPassword();
+    }
+
+    // Reuse the JSON verified above instead of re-reading the seed file, which
+    // would leave a TOCTOU window between verification and write.
+    nlohmann::json seedJson;
+    try
+    {
+        verifyPassword(userName, currentPassword, newPassword, seedJson);
+    }
+    catch (const InvalidCurrentPassword&)
+    {
+        if (++failedAttempts >= maxFailedAttempts)
         {
-            throw InternalFailure();
+            lockoutStart = std::chrono::steady_clock::now();
         }
-        json["AdminPwdHash"] = mNewPwdHash;
-        json["IsAdminPwdChanged"] = true;
+        throw;
+    }
+    failedAttempts = 0;
 
-        std::ofstream ofs(seedFile.c_str(), std::ios::out);
-        const auto& writeData = json.dump(4);
-        ofs << writeData;
-        ofs.close();
-        // send redfish event
-        bios_config::sendRedfishEvent("BiosPassword", "****", objectPathPwd);
+    if (seedJson.is_null() || seedJson.is_discarded())
+    {
+        throw InternalFailure();
+    }
+
+    if (userName == "AdminPassword")
+    {
+        seedJson["AdminPwdHash"] = mNewPwdHash;
+        seedJson["IsAdminPwdChanged"] = true;
     }
     else
     {
-        lg2::debug("Cannot open file stream");
-        throw InternalFailure();
+        seedJson["UserPwdHash"] = mNewPwdHash;
+        seedJson["IsUserPwdChanged"] = true;
     }
+
+    // Write to a temporary file and rename, so a crash mid-write cannot leave a
+    // truncated seed file and lock the BIOS password path out permanently.
+    fs::path tmpSeed = seedFile;
+    tmpSeed += ".tmp";
+    {
+        std::ofstream ofs(tmpSeed.c_str(), std::ios::out);
+        if (!ofs.is_open())
+        {
+            lg2::error("Cannot open temporary seed file for write");
+            throw InternalFailure();
+        }
+        ofs << seedJson.dump(4);
+    }
+    {
+        int fd = ::open(tmpSeed.c_str(), O_RDONLY);
+        if (fd >= 0)
+        {
+            ::fsync(fd);
+            ::close(fd);
+        }
+    }
+    fs::rename(tmpSeed, seedFile);
+    {
+        int dfd =
+            ::open(seedFile.parent_path().c_str(), O_RDONLY | O_DIRECTORY);
+        if (dfd >= 0)
+        {
+            ::fsync(dfd);
+            ::close(dfd);
+        }
+    }
+
+    bios_config::sendRedfishEvent("BiosPassword", "****", objectPathPwd);
 }
 Password::Password(sdbusplus::asio::object_server& objectServer,
                    std::shared_ptr<sdbusplus::asio::connection>& systemBus,

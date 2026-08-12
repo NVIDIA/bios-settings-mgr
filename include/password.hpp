@@ -24,6 +24,7 @@
 #include <sdbusplus/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/Password/server.hpp>
 
+#include <chrono>
 #include <filesystem>
 #include <string>
 
@@ -36,6 +37,8 @@ constexpr uint8_t maxHashSize = 64;
 constexpr uint8_t maxSeedSize = 32;
 constexpr uint8_t maxPasswordLen = 32;
 constexpr int iterValue = 1000;
+constexpr uint8_t maxFailedAttempts = 5;
+constexpr auto failedAttemptWindow = std::chrono::minutes(5);
 
 using Base = sdbusplus::xyz::openbmc_project::BIOSConfig::server::Password;
 namespace fs = std::filesystem;
@@ -75,7 +78,7 @@ class Password : public Base
 
   protected:
     void verifyPassword(std::string userName, std::string currentPassword,
-                        std::string newPassword);
+                        std::string newPassword, nlohmann::json& outSeedJson);
     bool compareDigest(const EVP_MD* digestFunc, size_t digestLen,
                        const std::array<uint8_t, maxHashSize>& expected,
                        const std::array<uint8_t, maxSeedSize>& seed,
@@ -85,13 +88,15 @@ class Password : public Base
                  const std::string& rawData, const std::string& algo);
     bool getParam(std::array<uint8_t, maxHashSize>& orgUsrPwdHash,
                   std::array<uint8_t, maxHashSize>& orgAdminPwdHash,
-                  std::array<uint8_t, maxSeedSize>& seed,
-                  std::string& hashAlgo);
+                  std::array<uint8_t, maxSeedSize>& seed, std::string& hashAlgo,
+                  nlohmann::json& outJson);
     bool verifyIntegrityCheck(std::string& newPassword,
                               std::array<uint8_t, maxSeedSize>& seed,
                               unsigned int mdLen, const EVP_MD* digestFunc);
     std::filesystem::path seedFile;
     std::array<uint8_t, maxHashSize> mNewPwdHash;
+    uint8_t failedAttempts = 0;
+    std::chrono::steady_clock::time_point lockoutStart{};
 };
 
 } // namespace bios_config_pwd

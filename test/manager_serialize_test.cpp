@@ -732,4 +732,23 @@ TEST_F(ManagerSerializeTest, SerializePreservesBootOptionsWithoutPendingEnabled)
     }
 }
 
+TEST_F(ManagerSerializeTest, DeserializeQuarantinesCorruptFile)
+{
+    {
+        std::ofstream f(serializePath, std::ios::binary);
+        const char bytes[] = {0x01, 0x02, 0x03, 0x04};
+        f.write(bytes, sizeof(bytes));
+    }
+
+    manager.reset();
+    auto manager2 =
+        std::make_unique<Manager>(*objServer, systemBus, loadPath.string());
+    EXPECT_FALSE(deserialize(serializePath, *manager2));
+
+    EXPECT_FALSE(std::filesystem::exists(serializePath));
+    std::filesystem::path corrupt = serializePath;
+    corrupt += ".corrupt";
+    EXPECT_TRUE(std::filesystem::exists(corrupt));
+}
+
 } // namespace bios_config::test

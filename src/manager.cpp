@@ -267,6 +267,21 @@ Manager::PendingAttributes Manager::pendingAttributes(PendingAttributes value)
 
     // Validate all the BIOS attributes before setting PendingAttributes
     BaseTable biosTable = Base::baseBIOSTable();
+    for (auto it = value.begin(); it != value.end();)
+    {
+        auto tIter = biosTable.find(it->first);
+        if (tIter != biosTable.end() &&
+            std::get<static_cast<uint8_t>(Index::readOnly)>(tIter->second))
+        {
+            lg2::error("Ignoring write to read-only BIOS attribute {ATTR}",
+                       "ATTR", it->first);
+            it = value.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
     for (const auto& pair : value)
     {
         auto iter = biosTable.find(pair.first);
@@ -455,6 +470,11 @@ void Manager::createBootOption(std::string id)
 {
     const std::regex illegalDbusRegex("[^A-Za-z0-9_]");
     const std::string key = std::regex_replace(id, illegalDbusRegex, "_");
+    if (key.empty())
+    {
+        lg2::error("createBootOption: sanitized key is empty, rejecting");
+        throw InvalidArgument();
+    }
     if (bootOptionValues.contains(key))
     {
         throw InvalidArgument();
@@ -513,8 +533,10 @@ void Manager::setBootOptionValues(const BootOptionsType& loaded)
         auto pendingEnabledIt = values.find("PendingEnabled");
         if (enabledIt != values.end() && pendingEnabledIt == values.end())
         {
-            dbusBootOptions[key]->pendingEnabled(
-                std::get<bool>(enabledIt->second));
+            if (const bool* b = std::get_if<bool>(&enabledIt->second))
+            {
+                dbusBootOptions[key]->pendingEnabled(*b);
+            }
         }
     }
 }

@@ -418,13 +418,25 @@ bool deserialize(const fs::path& path, Manager& entry)
     catch (cereal::Exception& e)
     {
         lg2::error("Cereal failed to serialize: {ERROR}", "ERROR", e);
-        fs::remove(path);
+        std::error_code ec;
+        fs::rename(path, fs::path(path) += ".corrupt", ec);
+        if (ec)
+        {
+            lg2::error("Failed to quarantine corrupt config: {ERROR}", "ERROR",
+                       ec.message());
+        }
         return false;
     }
     catch (const std::exception& e)
     {
-        lg2::error("Failed to serialize: {ERROR}", "ERROR", e);
-        fs::remove(path);
+        lg2::error("Failed to deserialize: {ERROR}", "ERROR", e);
+        std::error_code ec;
+        fs::rename(path, fs::path(path) += ".corrupt", ec);
+        if (ec)
+        {
+            lg2::error("Failed to quarantine corrupt config: {ERROR}", "ERROR",
+                       ec.message());
+        }
         return false;
     }
 }

@@ -18,12 +18,18 @@
 #include "common.hpp"
 #include "password.hpp"
 
+#include <sys/stat.h>
+
 #include <nlohmann/json.hpp>
 #include <xyz/openbmc_project/BIOSConfig/Common/error.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 
+#include <algorithm>
+#include <cerrno>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 namespace bios_config_pwd::test
 {
@@ -70,6 +76,20 @@ class PasswordTest : public bios_config::test::BiosConfigTest
 TEST_F(PasswordTest, ConstructorCreatesPassword)
 {
     EXPECT_NE(password, nullptr);
+}
+
+TEST_F(PasswordTest, ConstructorThrowsWhenPersistPathIsFile)
+{
+    password.reset();
+
+    const auto filePath = tempDir / "persist_is_file";
+    {
+        std::ofstream file(filePath);
+        ASSERT_TRUE(file.is_open());
+    }
+
+    EXPECT_THROW(Password(*objServer, systemBus, filePath.string()),
+                 InternalFailure);
 }
 
 TEST_F(PasswordTest, ChangePasswordWithInvalidSeedFile)
@@ -496,6 +516,33 @@ TEST_F(PasswordTest, VerifyIntegrityCheckReturnsTrueForSHA384)
     EXPECT_TRUE(result);
 }
 
+TEST_F(PasswordTest, CompareDigestThrowsWhenOpenSslRejectsDigest)
+{
+    std::array<uint8_t, maxSeedSize> seed = {0xAA};
+    std::array<uint8_t, maxHashSize> expected = {0};
+
+    password.reset();
+    auto testablePwd = std::make_unique<TestablePassword>(
+        *objServer, systemBus, seedPath.parent_path().string());
+
+    EXPECT_THROW(testablePwd->compareDigest(nullptr, SHA256_DIGEST_LENGTH,
+                                            expected, seed, "password"),
+                 InternalFailure);
+}
+
+TEST_F(PasswordTest, VerifyIntegrityCheckReturnsFalseWhenOpenSslRejectsDigest)
+{
+    std::string newPassword = "newPassword123";
+    std::array<uint8_t, maxSeedSize> seed = {0xAA};
+
+    password.reset();
+    auto testablePwd = std::make_unique<TestablePassword>(
+        *objServer, systemBus, seedPath.parent_path().string());
+
+    EXPECT_FALSE(
+        testablePwd->verifyIntegrityCheck(newPassword, seed, 32, nullptr));
+}
+
 TEST_F(PasswordTest, GetParamReturnsTrueForValidJsonFile)
 {
     nlohmann::json seedData;
@@ -900,6 +947,233 @@ TEST_F(PasswordTest, ChangePasswordSucceedsAndUpdatesSeedFile)
     EXPECT_TRUE(readBack.contains("AdminPwdHash"));
     std::vector<uint8_t> newHash = readBack["AdminPwdHash"];
     EXPECT_EQ(newHash.size(), 64u);
+}
+
+// Helper: write a seed file with 64-byte hashes (the correct size for
+// maxHashSize=64)
+static void createSeedFile64(
+    const std::filesystem::path& path, const std::string& algo,
+    const std::vector<uint8_t>& userHash64,
+    const std::vector<uint8_t>& adminHash64, const std::vector<uint8_t>& seed32)
+{
+    nlohmann::json j;
+    j["HashAlgo"] = algo;
+    j["Seed"] = seed32;
+    j["UserPwdHash"] = userHash64;
+    j["AdminPwdHash"] = adminHash64;
+    std::ofstream f(path);
+    f << j.dump();
+}
+
+static std::vector<uint8_t> computePbkdf2Sha256(
+    const std::string& password, const std::vector<uint8_t>& seed)
+{
+    std::vector<uint8_t> out(SHA256_DIGEST_LENGTH);
+    int rc = PKCS5_PBKDF2_HMAC(
+        password.c_str(), static_cast<int>(password.size() + 1), seed.data(),
+        static_cast<int>(seed.size()), 1000, EVP_sha256(), SHA256_DIGEST_LENGTH,
+        out.data());
+    EXPECT_EQ(rc, 1) << "PKCS5_PBKDF2_HMAC(SHA256) failed";
+    return out;
+}
+
+static std::vector<uint8_t> computePbkdf2Sha384(
+    const std::string& password, const std::vector<uint8_t>& seed)
+{
+    std::vector<uint8_t> out(SHA384_DIGEST_LENGTH);
+    int rc = PKCS5_PBKDF2_HMAC(
+        password.c_str(), static_cast<int>(password.size() + 1), seed.data(),
+        static_cast<int>(seed.size()), 1000, EVP_sha384(), SHA384_DIGEST_LENGTH,
+        out.data());
+    EXPECT_EQ(rc, 1) << "PKCS5_PBKDF2_HMAC(SHA384) failed";
+    return out;
+}
+
+// Pads a hash vector to 64 bytes (maxHashSize).
+static std::vector<uint8_t> pad64(const std::vector<uint8_t>& v)
+{
+    std::vector<uint8_t> out(64, 0);
+    std::copy_n(v.begin(), std::min(v.size(), out.size()), out.begin());
+    return out;
+}
+
+// --- Tests that use correct 64-byte hash arrays so getParam succeeds ---
+
+TEST_F(PasswordTest, VerifyPasswordUserPathReachesIsMatchWithCorrectPassword)
+{
+    // Tests the else (non-AdminPassword) branch in verifyPassword with 64-byte
+    // hashes.
+    const std::string pwd = "userPass42";
+    const std::vector<uint8_t> seed32(32, 0xAB);
+    auto hash = computePbkdf2Sha256(pwd, seed32);
+
+    createSeedFile64(seedPath, "SHA256", pad64(hash),
+                     std::vector<uint8_t>(64, 0x00), seed32);
+
+    password.reset();
+    auto testablePwd = std::make_unique<TestablePassword>(
+        *objServer, systemBus, seedPath.parent_path().string());
+
+    // Correct UserPassword: should not throw InvalidCurrentPassword
+    EXPECT_NO_THROW(
+        testablePwd->verifyPassword("UserPassword", pwd, "newPass"));
+}
+
+TEST_F(PasswordTest,
+       VerifyPasswordUserPathThrowsOnWrongPasswordWith64ByteHashes)
+{
+    // Tests that wrong password on the user path throws InvalidCurrentPassword.
+    const std::vector<uint8_t> seed32(32, 0xCD);
+    // Hash is all-zeros which won't match any real password
+    createSeedFile64(seedPath, "SHA256",
+                     std::vector<uint8_t>(64, 0x01), // userHash: non-matching
+                     std::vector<uint8_t>(64, 0x00), // adminHash
+                     seed32);
+
+    password.reset();
+    auto testablePwd = std::make_unique<TestablePassword>(
+        *objServer, systemBus, seedPath.parent_path().string());
+
+    EXPECT_THROW(
+        testablePwd->verifyPassword("UserPassword", "wrongPass", "newPass"),
+        InvalidCurrentPassword);
+}
+
+TEST_F(PasswordTest,
+       VerifyPasswordAdminPathReachesIsMatchWithCorrectPasswordSHA384)
+{
+    // Tests the AdminPassword path with SHA384 so line 188 is covered.
+    const std::string pwd = "adminPass99";
+    const std::vector<uint8_t> seed32(32, 0xEF);
+    auto hash = computePbkdf2Sha384(pwd, seed32);
+
+    createSeedFile64(seedPath, "SHA384",
+                     std::vector<uint8_t>(64, 0x00), // userHash
+                     pad64(hash),                    // adminHash
+                     seed32);
+
+    password.reset();
+    auto testablePwd = std::make_unique<TestablePassword>(
+        *objServer, systemBus, seedPath.parent_path().string());
+
+    // Correct AdminPassword with SHA384: should not throw
+    // InvalidCurrentPassword
+    EXPECT_NO_THROW(
+        testablePwd->verifyPassword("AdminPassword", pwd, "newPass"));
+}
+
+TEST_F(PasswordTest, VerifyPasswordUserPathSHA384WithCorrectPassword)
+{
+    // Tests user path + SHA384 algorithm with correct 64-byte hashes.
+    const std::string pwd = "userPassSHA384";
+    const std::vector<uint8_t> seed32(32, 0x12);
+    auto hash = computePbkdf2Sha384(pwd, seed32);
+
+    createSeedFile64(seedPath, "SHA384",
+                     pad64(hash),                    // userHash
+                     std::vector<uint8_t>(64, 0x00), // adminHash
+                     seed32);
+
+    password.reset();
+    auto testablePwd = std::make_unique<TestablePassword>(
+        *objServer, systemBus, seedPath.parent_path().string());
+
+    EXPECT_NO_THROW(
+        testablePwd->verifyPassword("UserPassword", pwd, "newPass"));
+}
+
+TEST_F(PasswordTest, ChangePasswordUserPathSucceedsWithCorrect64ByteHashes)
+{
+    // Tests changePassword succeeds on user path with 64-byte hashes.
+    const std::string currentPwd = "currentU";
+    const std::vector<uint8_t> seed32(32, 0x34);
+    auto hash = computePbkdf2Sha256(currentPwd, seed32);
+
+    createSeedFile64(seedPath, "SHA256", pad64(hash),
+                     std::vector<uint8_t>(64, 0x00), seed32);
+
+    password.reset();
+    auto pwd = std::make_unique<Password>(*objServer, systemBus,
+                                          seedPath.parent_path().string());
+
+    EXPECT_NO_THROW(
+        pwd->changePassword("UserPassword", currentPwd, "newPass123"));
+}
+
+TEST_F(PasswordTest,
+       VerifyPasswordReturnsEarlyWhenHashAlgoEmptyWith64ByteArrays)
+{
+    // HashAlgo="" + 64-byte arrays: getParam succeeds but hashAlgo.empty() is
+    // true, so verifyPassword returns early (covers the compound-condition
+    // return-early branch at lines 156-157 in password.cpp).
+    const std::vector<uint8_t> seed32(32, 0x56);
+    createSeedFile64(seedPath, "",                   // empty HashAlgo
+                     std::vector<uint8_t>(64, 0x00), // UserPwdHash
+                     std::vector<uint8_t>(64, 0x00), // AdminPwdHash
+                     seed32);
+
+    password.reset();
+    auto testablePwd = std::make_unique<TestablePassword>(
+        *objServer, systemBus, seedPath.parent_path().string());
+
+    // Should return early (not throw) because hashAlgo is empty.
+    EXPECT_NO_THROW(
+        testablePwd->verifyPassword("AdminPassword", "anyPwd", "newPwd"));
+}
+
+TEST_F(PasswordTest,
+       VerifyPasswordAdminPathThrowsInvalidCurrentPasswordWith64ByteHashes)
+{
+    // Wrong admin password with 64-byte hashes: covers the
+    // isMatch-returns-false throw branch (line 169 ft=True) in verifyPassword's
+    // admin path.
+    const std::vector<uint8_t> seed32(32, 0x78);
+    // AdminPwdHash set to all-0xFF so no real password will match.
+    createSeedFile64(seedPath, "SHA256",
+                     std::vector<uint8_t>(64, 0x00), // UserPwdHash
+                     std::vector<uint8_t>(64, 0xFF), // AdminPwdHash: mismatch
+                     seed32);
+
+    password.reset();
+    auto testablePwd = std::make_unique<TestablePassword>(
+        *objServer, systemBus, seedPath.parent_path().string());
+
+    EXPECT_THROW(
+        testablePwd->verifyPassword("AdminPassword", "wrongAdminPwd", "newPwd"),
+        InvalidCurrentPassword);
+}
+
+TEST_F(PasswordTest, ChangePasswordThrowsWhenSeedFileDisappearsAfterVerify)
+{
+    const std::string currentPwd = "fifoCurrent";
+    const std::vector<uint8_t> seed32(32, 0x9A);
+    const auto hash = computePbkdf2Sha256(currentPwd, seed32);
+
+    nlohmann::json seedData;
+    seedData["HashAlgo"] = "SHA256";
+    seedData["Seed"] = seed32;
+    seedData["UserPwdHash"] = std::vector<uint8_t>(64, 0x00);
+    seedData["AdminPwdHash"] = pad64(hash);
+
+    if (std::filesystem::exists(seedPath))
+    {
+        std::filesystem::remove(seedPath);
+    }
+    ASSERT_EQ(mkfifo(seedPath.c_str(), 0600), 0) << std::strerror(errno);
+
+    std::thread writer([this, payload = seedData.dump()]() {
+        std::ofstream fifo(seedPath);
+        std::filesystem::remove(seedPath);
+        fifo << payload;
+    });
+
+    password.reset();
+    auto pwd = std::make_unique<Password>(*objServer, systemBus,
+                                          seedPath.parent_path().string());
+    EXPECT_THROW(pwd->changePassword("AdminPassword", currentPwd, "newPwd"),
+                 InternalFailure);
+
+    writer.join();
 }
 
 } // namespace bios_config_pwd::test

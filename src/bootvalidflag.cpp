@@ -53,9 +53,61 @@ void BootValidFlag::setDbusProperty(
         service, objPath, propIntf, methodSet, interface, property, value);
 }
 
+void BootValidFlag::processBootFlagTimeoutValue(bool bootFlagTimeoutDis)
+{
+    if (!bootFlagTimeoutDis)
+    {
+        // If both the Persistent Flag and Timeout Override Disable Flags are
+        // not set, then set the Boot Valid Flag value to false.
+        bool setToFalse = false;
+        bios_config_valid::Value var(setToFalse);
+        this->setDbusProperty(settingService, bootSettingsPath, bootEnableIntf,
+                              enalbeProperty, var);
+    }
+}
+
+void BootValidFlag::processBootFlagOneTimeValue(bool oneTimeEnabled)
+{
+    // persistentFlag value is inverted to one_time property value
+    bool persistentFlag = !oneTimeEnabled;
+    if (!persistentFlag)
+    {
+        // check if bootFlagTimeoutDis Flag is set,
+        this->dbusConnectionPtr->async_method_call(
+            [this](boost::system::error_code ec, sdbusplus::message_t reply) {
+                if (ec)
+                {
+                    lg2::error(
+                        "Failed to get property {PROPERTY} on {PATH} for interface {INTERFACE} ERROR: {ERROR}",
+                        "PROPERTY", bootFlagTimeoutDisProperty, "PATH",
+                        bootSettingsPath, "INTERFACE", bootFlagTimeoutDisIntf,
+                        "ERROR", ec.what());
+                    return;
+                }
+                bool bootFlagTimeoutDis = false;
+                try
+                {
+                    bios_config_valid::Value value;
+                    reply.read(value);
+                    bootFlagTimeoutDis = std::get<bool>(value);
+                }
+                catch (const std::exception& e)
+                {
+                    lg2::error("Failed to read {PROPERTY} reply: {ERROR}",
+                               "PROPERTY", bootFlagTimeoutDisProperty, "ERROR",
+                               e.what());
+                    return;
+                }
+                this->processBootFlagTimeoutValue(bootFlagTimeoutDis);
+            },
+            settingService, bootSettingsPath, propIntf, methodeGet,
+            bootFlagTimeoutDisIntf, bootFlagTimeoutDisProperty);
+    }
+}
+
 void BootValidFlag::setBootValidFlag()
 {
-    // check if  persistentFlag Flag is set,
+    // check if persistentFlag Flag is set,
     dbusConnectionPtr->async_method_call(
         [this](boost::system::error_code ec, sdbusplus::message_t reply) {
             if (ec)
@@ -66,57 +118,42 @@ void BootValidFlag::setBootValidFlag()
                     "INTERFACE", bootEnableIntf, "ERROR", ec.what());
                 return;
             }
-            bios_config_valid::Value value;
-            reply.read(value);
-            // persistentFlag  value is inverted to one_time property value
-            bool persistentFlag = !std::get<bool>(value);
-            if (!persistentFlag)
+            bool oneTimeEnabled = false;
+            try
             {
-                // check if bootFlagTimeoutDis Flag is set,
-                this->dbusConnectionPtr->async_method_call(
-                    [this](boost::system::error_code ec,
-                           sdbusplus::message_t reply) {
-                        if (ec)
-                        {
-                            lg2::error(
-                                "Failed to get property {PROPERTY} on {PATH} for interface {INTERFACE} ERROR: {ERROR}",
-                                "PROPERTY", bootFlagTimeoutDisProperty, "PATH",
-                                bootSettingsPath, "INTERFACE",
-                                bootFlagTimeoutDisIntf, "ERROR", ec.what());
-                            return;
-                        }
-                        bios_config_valid::Value value;
-                        reply.read(value);
-                        bool bootFlagTimeoutDis = std::get<bool>(value);
-                        if (!bootFlagTimeoutDis)
-                        {
-                            // If both the Persistent Flag and Timeout Override
-                            // Disable Flags are not set, then set the Boot
-                            // Valid Flag value to false.
-                            bool setToFalse = false;
-                            bios_config_valid::Value var(setToFalse);
-                            this->setDbusProperty(
-                                settingService, bootSettingsPath,
-                                bootEnableIntf, enalbeProperty, var);
-                        }
-                    },
-                    settingService, bootSettingsPath, propIntf, methodeGet,
-                    bootFlagTimeoutDisIntf, bootFlagTimeoutDisProperty);
+                bios_config_valid::Value value;
+                reply.read(value);
+                oneTimeEnabled = std::get<bool>(value);
             }
+            catch (const std::exception& e)
+            {
+                lg2::error("Failed to read {PROPERTY} reply: {ERROR}",
+                           "PROPERTY", enalbeProperty, "ERROR", e.what());
+                return;
+            }
+            this->processBootFlagOneTimeValue(oneTimeEnabled);
         },
         settingService, bootSettingsOneTimePath, propIntf, methodeGet,
         bootEnableIntf, enalbeProperty);
     return;
 }
 
-void BootValidFlag::cancelTimer(sdbusplus::message::message& msg)
+void BootValidFlag::processTimerCallback(const boost::system::error_code& error)
 {
-    std::string interfaceName;
-    std::map<std::string, std::variant<bool>> changedProperties;
-    std::vector<std::string> invalidatedProperties;
-    msg.read(interfaceName, changedProperties, invalidatedProperties);
-    // Verify if the property has been set to false, and if so, cancel the
-    // timer.
+    if (!error)
+    {
+        lg2::info("Timer expired, setting boot valid flag");
+        this->setBootValidFlag();
+    }
+    else
+    {
+        lg2::error("Timer error: {ERROR}", "ERROR", error.message());
+    }
+}
+
+void BootValidFlag::processCancelTimerProperties(
+    const std::map<std::string, std::variant<bool>>& changedProperties)
+{
     lg2::info("Check if need to cancel timer");
     for (const auto& [property, value] : changedProperties)
     {
@@ -133,12 +170,27 @@ void BootValidFlag::cancelTimer(sdbusplus::message::message& msg)
     }
 }
 
-void BootValidFlag::setTimer(sdbusplus::message::message& msg)
+void BootValidFlag::cancelTimer(sdbusplus::message::message& msg)
 {
     std::string interfaceName;
     std::map<std::string, std::variant<bool>> changedProperties;
     std::vector<std::string> invalidatedProperties;
-    msg.read(interfaceName, changedProperties, invalidatedProperties);
+    try
+    {
+        msg.read(interfaceName, changedProperties, invalidatedProperties);
+    }
+    catch (const sdbusplus::exception::SdBusError& e)
+    {
+        lg2::error("Failed to read PropertiesChanged message: {ERROR}", "ERROR",
+                   e.what());
+        return;
+    }
+    processCancelTimerProperties(changedProperties);
+}
+
+void BootValidFlag::processSetTimerProperties(
+    const std::map<std::string, std::variant<bool>>& changedProperties)
+{
     // Verify if the property has been set to false, and if so, cancel the
     // timer.
     for (const auto& [property, value] : changedProperties)
@@ -170,16 +222,26 @@ void BootValidFlag::setTimer(sdbusplus::message::message& msg)
     // Set new expiry time and start new asynchronous wait for 60 sec.
     timer_60->expires_after(std::chrono::seconds(TIMER_TIME));
     timer_60->async_wait([this](const boost::system::error_code& error) {
-        if (!error)
-        {
-            lg2::info("Timer expired, setting boot valid flag");
-            this->setBootValidFlag();
-        }
-        else
-        {
-            lg2::error("Timer error: {ERROR}", "ERROR", error.message());
-        }
+        this->processTimerCallback(error);
     });
+}
+
+void BootValidFlag::setTimer(sdbusplus::message::message& msg)
+{
+    std::string interfaceName;
+    std::map<std::string, std::variant<bool>> changedProperties;
+    std::vector<std::string> invalidatedProperties;
+    try
+    {
+        msg.read(interfaceName, changedProperties, invalidatedProperties);
+    }
+    catch (const sdbusplus::exception::SdBusError& e)
+    {
+        lg2::error("Failed to read PropertiesChanged message: {ERROR}", "ERROR",
+                   e.what());
+        return;
+    }
+    processSetTimerProperties(changedProperties);
 }
 
 void BootValidFlag::setupMatches(sdbusplus::bus_t& dbusConnection)
@@ -211,6 +273,13 @@ void BootValidFlag::setupMatches(sdbusplus::bus_t& dbusConnection)
         [this](sdbusplus::message::message& msg) { this->cancelTimer(msg); });
 }
 
+void BootValidFlag::onInitSuccess(boost::asio::io_context& io)
+{
+    timer_60 = std::make_unique<boost::asio::steady_timer>(io);
+    this->setBootValidFlag();
+    this->setupMatches(*dbusConnectionPtr);
+}
+
 BootValidFlag::BootValidFlag(
     std::shared_ptr<sdbusplus::asio::connection> systemBusPtr,
     boost::asio::io_context& io)
@@ -229,9 +298,7 @@ BootValidFlag::BootValidFlag(
                     "ERROR", ec.what());
                 return;
             }
-            timer_60 = std::make_unique<boost::asio::steady_timer>(io);
-            this->setBootValidFlag();
-            this->setupMatches(*dbusConnectionPtr);
+            this->onInitSuccess(io);
         },
         settingService, bootSettingsPath, propIntf, methodeGet,
         bootFlagTimeoutDisIntf, bootFlagTimeoutDisProperty);

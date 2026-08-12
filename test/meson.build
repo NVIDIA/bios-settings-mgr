@@ -84,7 +84,9 @@ if gtest_dep.found() and gmock_dep.found()
 
     tests = [
         'manager_test',
+        'allocation_failure_test',
         'password_test',
+        'password_openssl_failure_test',
         'boot_option_test',
         'manager_serialize_test',
         'rfutility_test',
@@ -109,6 +111,34 @@ if gtest_dep.found() and gmock_dep.found()
             is_parallel: false,
         )
     endforeach
+
+    daemon_exit_preload = shared_library(
+        'daemon_exit_preload',
+        'daemon_exit_preload.cpp',
+        dependencies: dependency('threads'),
+        install: false,
+    )
+
+    daemon_binary_test = executable(
+        'daemon_binary_test',
+        'daemon_binary_test.cpp',
+        dependencies: [
+            gtest_dep,
+            dependency('threads'),
+        ],
+    )
+
+    test(
+        'daemon_binary_test',
+        daemon_binary_test,
+        env: {
+            'BIOSCONFIG_MANAGER_BIN': meson.project_build_root() / 'biosconfig-manager',
+            'BIOSCONFIG_MANAGER_PRELOAD': daemon_exit_preload.full_path(),
+        },
+        depends: [daemon_exit_preload, biosconfig_manager_exe],
+        protocol: 'gtest',
+    )
+
 
     if 'address' in get_option('b_sanitize')
         add_test_setup(

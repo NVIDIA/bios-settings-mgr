@@ -1413,4 +1413,71 @@ TEST_F(ManagerTest, GetAttributeWithIntegerPendingValue)
     EXPECT_EQ(std::get<int64_t>(std::get<2>(result)), int64_t(50));
 }
 
+// setAttribute rejects an attribute absent from the BaseBIOSTable instead of
+// silently staging it.
+TEST_F(ManagerTest, SetAttributeThrowsWhenAttributeNotInBaseTable)
+{
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    Manager::BaseTable table;
+    table["KnownAttr"] = std::make_tuple(
+        AttributeType::String, false, "DisplayName", "Description", "MenuPath",
+        std::variant<int64_t, std::string>(std::string("cur")),
+        std::variant<int64_t, std::string>(std::string("def")), options);
+    manager->baseBIOSTable(table);
+
+    EXPECT_THROW(manager->setAttribute("UnknownAttr", std::string("x")),
+                 std::exception);
+}
+
+// The staged value must match the type declared in the BaseBIOSTable.
+TEST_F(ManagerTest, SetAttributeThrowsOnValueTypeMismatch)
+{
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::LowerBound, int64_t(0), "");
+    options.emplace_back(BoundType::UpperBound, int64_t(100), "");
+    options.emplace_back(BoundType::ScalarIncrement, int64_t(1), "");
+
+    Manager::BaseTable table;
+    table["IntTypedAttr"] = std::make_tuple(
+        AttributeType::Integer, false, "DisplayName", "Description", "MenuPath",
+        std::variant<int64_t, std::string>(int64_t(0)),
+        std::variant<int64_t, std::string>(int64_t(0)), options);
+    manager->baseBIOSTable(table);
+
+    // Integer attribute given a string value.
+    EXPECT_THROW(manager->setAttribute("IntTypedAttr", std::string("nope")),
+                 std::exception);
+}
+
+// Password (string-backed) and Boolean (int64-backed) are accepted when the
+// value matches the declared type.
+TEST_F(ManagerTest, SetAttributeAcceptsPasswordAndBooleanTypes)
+{
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+
+    Manager::BaseTable table;
+    table["PwdAttr"] = std::make_tuple(
+        AttributeType::Password, false, "DisplayName", "Description",
+        "MenuPath", std::variant<int64_t, std::string>(std::string("")),
+        std::variant<int64_t, std::string>(std::string("")), options);
+    table["BoolAttr"] = std::make_tuple(
+        AttributeType::Boolean, false, "DisplayName", "Description", "MenuPath",
+        std::variant<int64_t, std::string>(int64_t(0)),
+        std::variant<int64_t, std::string>(int64_t(0)), options);
+    manager->baseBIOSTable(table);
+
+    EXPECT_NO_THROW(manager->setAttribute("PwdAttr", std::string("secret")));
+    EXPECT_NO_THROW(manager->setAttribute("BoolAttr", int64_t(1)));
+
+    // A Boolean given a string, and a Password given an int, must be rejected.
+    EXPECT_THROW(manager->setAttribute("BoolAttr", std::string("true")),
+                 std::exception);
+    EXPECT_THROW(manager->setAttribute("PwdAttr", int64_t(1)), std::exception);
+}
 } // namespace bios_config::test

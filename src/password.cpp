@@ -151,8 +151,7 @@ void Password::verifyPassword(std::string userName, std::string currentPassword,
                               std::string newPassword,
                               nlohmann::json& outSeedJson)
 {
-    if (currentPassword.empty() || newPassword.empty() ||
-        newPassword.length() > maxPasswordLen)
+    if (newPassword.empty() || newPassword.length() > maxPasswordLen)
     {
         throw InvalidCurrentPassword();
     }
@@ -227,8 +226,7 @@ void Password::changePassword(std::string userName, std::string currentPassword,
         failedAttempts = 0;
     }
 
-    if (currentPassword.empty() || newPassword.empty() ||
-        newPassword.length() > maxPasswordLen)
+    if (newPassword.empty() || newPassword.length() > maxPasswordLen)
     {
         throw InvalidCurrentPassword();
     }

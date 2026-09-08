@@ -1196,16 +1196,37 @@ TEST_F(PasswordTest, ChangePasswordRoutesUserAccountToUserHash)
 
 // --- Coverage for the input-validation and lockout guards ---
 
-TEST_F(PasswordTest, ChangePasswordRejectsEmptyCurrentPassword)
+TEST_F(PasswordTest, ChangePasswordRejectsEmptyCurrentWhenConfigured)
 {
+    const std::string configured = "alreadySet";
     const std::vector<uint8_t> seed32(32, 0x11);
+    const auto hash = computePbkdf2Sha256(configured, seed32);
     createSeedFile64(seedPath, "SHA256", std::vector<uint8_t>(64, 0x00),
-                     std::vector<uint8_t>(64, 0x00), seed32);
+                     pad64(hash), seed32);
     password.reset();
     auto pwd = std::make_unique<Password>(*objServer, systemBus,
                                           seedPath.parent_path().string());
     EXPECT_THROW(pwd->changePassword("AdminPassword", "", "newPwd"),
                  InvalidCurrentPassword);
+}
+
+TEST_F(PasswordTest, ChangePasswordAllowsEmptyCurrentWhenUnprovisioned)
+{
+    const std::vector<uint8_t> seed32(32, 0x21);
+    const auto emptyHash = computePbkdf2Sha256("", seed32);
+    createSeedFile64(seedPath, "SHA256", std::vector<uint8_t>(64, 0x00),
+                     pad64(emptyHash), seed32);
+    password.reset();
+    auto pwd = std::make_unique<Password>(*objServer, systemBus,
+                                          seedPath.parent_path().string());
+
+    EXPECT_NO_THROW(pwd->changePassword("AdminPassword", "", "newPwd"));
+
+    std::ifstream ifs(seedPath);
+    nlohmann::json readBack = nlohmann::json::parse(ifs);
+    EXPECT_TRUE(readBack["IsAdminPwdChanged"].get<bool>());
+    std::vector<uint8_t> adminAfter = readBack["AdminPwdHash"];
+    EXPECT_NE(adminAfter, pad64(emptyHash));
 }
 
 TEST_F(PasswordTest, ChangePasswordRejectsEmptyNewPassword)

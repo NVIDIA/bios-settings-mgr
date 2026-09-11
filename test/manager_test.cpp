@@ -26,6 +26,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <variant>
 
@@ -636,10 +637,18 @@ TEST_F(ManagerTest, ValidateStringOptionWithOnlyMinLength)
 
     manager->baseBIOSTable(table);
 
+    // Only MinStringLength is declared, so a longer value is unconstrained
+    // above and must be accepted.
     Manager::PendingAttributes pendingAttrs;
     pendingAttrs["StringAttr"] =
         std::make_tuple(AttributeType::String, std::string("TestValue"));
-    EXPECT_THROW(manager->pendingAttributes(pendingAttrs), std::exception);
+    EXPECT_NO_THROW(manager->pendingAttributes(pendingAttrs));
+
+    // Shorter than the declared minimum is still refused.
+    Manager::PendingAttributes tooShort;
+    tooShort["StringAttr"] =
+        std::make_tuple(AttributeType::String, std::string("ab"));
+    EXPECT_THROW(manager->pendingAttributes(tooShort), std::exception);
 }
 
 TEST_F(ManagerTest, ValidateStringOptionWithOnlyMaxLength)
@@ -1244,8 +1253,115 @@ TEST_F(ManagerTest, ValidateIntegerOptionReturnsFalseForInvalidScalarIncrement)
     EXPECT_FALSE(result);
 }
 
-TEST_F(ManagerTest, ValidateIntegerOptionReturnsFalseForZeroScalarIncrement)
+TEST_F(ManagerTest, ValidateIntegerOptionAcceptsDeclaredUpperBoundOffGrid)
 {
+    // PeakTotalInputPowerLimitMilliwatts declares UpperBound 4294967295
+    // against ScalarIncrement 1000, so the declared maximum is not on the
+    // grid. A bound the table declares is a legal value.
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::LowerBound, int64_t(0), "");
+    options.emplace_back(BoundType::UpperBound, int64_t(4294967295), "");
+    options.emplace_back(BoundType::ScalarIncrement, int64_t(1000), "");
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_TRUE(testableMgr->validateIntegerOption(4294967295, options));
+}
+
+TEST_F(ManagerTest, ValidateIntegerOptionRejectsOffGridValueBelowUpperBound)
+{
+    // Only the bound itself is exempt; a neighbouring off-grid value is not.
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::LowerBound, int64_t(0), "");
+    options.emplace_back(BoundType::UpperBound, int64_t(4294967295), "");
+    options.emplace_back(BoundType::ScalarIncrement, int64_t(1000), "");
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_FALSE(testableMgr->validateIntegerOption(4294967294, options));
+}
+
+TEST_F(ManagerTest, ValidateIntegerOptionAcceptsHighestOnGridValue)
+{
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::LowerBound, int64_t(0), "");
+    options.emplace_back(BoundType::UpperBound, int64_t(4294967295), "");
+    options.emplace_back(BoundType::ScalarIncrement, int64_t(1000), "");
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_TRUE(testableMgr->validateIntegerOption(4294967000, options));
+}
+
+TEST_F(ManagerTest, ValidateIntegerOptionAcceptsDeclaredLowerBound)
+{
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::LowerBound, int64_t(0), "");
+    options.emplace_back(BoundType::UpperBound, int64_t(4294967295), "");
+    options.emplace_back(BoundType::ScalarIncrement, int64_t(1000), "");
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_TRUE(testableMgr->validateIntegerOption(0, options));
+}
+
+TEST_F(ManagerTest, ValidateIntegerOptionHandlesFullRangeWithoutOverflow)
+{
+    // The span between the bounds is 2^64 - 1, so forming the signed
+    // difference would overflow before the modulo runs. INT64_MAX itself
+    // would exit at the declared-bound exemption, so probe one below it.
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::LowerBound,
+                         std::numeric_limits<int64_t>::min(), "");
+    options.emplace_back(BoundType::UpperBound,
+                         std::numeric_limits<int64_t>::max(), "");
+    options.emplace_back(BoundType::ScalarIncrement, int64_t(2), "");
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_TRUE(testableMgr->validateIntegerOption(
+        std::numeric_limits<int64_t>::max() - 1, options));
+}
+
+TEST_F(ManagerTest, ValidateIntegerOptionRejectsOffGridAcrossFullRange)
+{
+    // Same span, one step further out. Proves the wide-distance path is
+    // computed rather than vacuously accepted.
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::LowerBound,
+                         std::numeric_limits<int64_t>::min(), "");
+    options.emplace_back(BoundType::UpperBound,
+                         std::numeric_limits<int64_t>::max(), "");
+    options.emplace_back(BoundType::ScalarIncrement, int64_t(2), "");
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_FALSE(testableMgr->validateIntegerOption(
+        std::numeric_limits<int64_t>::max() - 2, options));
+}
+
+TEST_F(ManagerTest, ValidateIntegerOptionIgnoresZeroScalarIncrement)
+{
+    // A declared increment of zero describes no grid. An in-range value must
+    // not be refused because the table carries meaningless metadata.
     std::vector<
         std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
         options;
@@ -1257,7 +1373,7 @@ TEST_F(ManagerTest, ValidateIntegerOptionReturnsFalseForZeroScalarIncrement)
     auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
                                                          persistPath.string());
     bool result = testableMgr->validateIntegerOption(50, options);
-    EXPECT_FALSE(result);
+    EXPECT_TRUE(result);
 }
 
 TEST_F(ManagerTest, ValidateIntegerOptionHandlesNegativeValues)
@@ -1481,8 +1597,10 @@ TEST_F(ManagerTest, SetAttributeAcceptsPasswordAndBooleanTypes)
     EXPECT_THROW(manager->setAttribute("PwdAttr", int64_t(1)), std::exception);
 }
 
-TEST_F(ManagerTest, PendingAttributesSkipsReadOnlyAttribute)
+TEST_F(ManagerTest, PendingAttributesRefusesBatchWithReadOnlyAttribute)
 {
+    // PendingAttributes declares AttributeReadOnly. A batch containing one is
+    // refused whole rather than silently trimmed and reported as success.
     std::vector<
         std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
         options;
@@ -1507,12 +1625,19 @@ TEST_F(ManagerTest, PendingAttributesSkipsReadOnlyAttribute)
     pending["RwAttr"] =
         std::make_tuple(AttributeType::String,
                         std::variant<int64_t, std::string>(std::string("y")));
-    manager->pendingAttributes(pending);
+    EXPECT_THROW(manager->pendingAttributes(pending), AttributeReadOnly);
 
     auto staged = manager->sdbusplus::xyz::openbmc_project::BIOSConfig::server::
                       Manager::pendingAttributes();
     EXPECT_EQ(staged.find("RoAttr"), staged.end());
-    EXPECT_NE(staged.find("RwAttr"), staged.end());
+    EXPECT_EQ(staged.find("RwAttr"), staged.end());
+
+    auto roIt = pending.find("RoAttr");
+    auto rwIt = pending.find("RwAttr");
+    ASSERT_NE(roIt, pending.end());
+    ASSERT_NE(rwIt, pending.end());
+    EXPECT_EQ(std::get<std::string>(std::get<1>(roIt->second)), "x");
+    EXPECT_EQ(std::get<std::string>(std::get<1>(rwIt->second)), "y");
 }
 
 TEST_F(ManagerTest, CreateBootOptionRejectsEmptyAndAllIllegalId)
@@ -1525,6 +1650,114 @@ TEST_F(ManagerTest, CreateBootOptionRejectsEmptyAndAllIllegalId)
     EXPECT_NO_THROW(manager->createBootOption("a-b.c"));
     auto options = manager->getBootOptionValues();
     EXPECT_NE(options.find("a_b_c"), options.end());
+}
+
+TEST_F(ManagerTest, ValidateStringOptionAcceptsWhenNoMaxLengthDeclared)
+{
+    // An attribute that declares no MaxStringLength is unconstrained above,
+    // not limited to the empty string.
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_TRUE(testableMgr->validateStringOption("AnyLength", options));
+}
+
+TEST_F(ManagerTest, ValidateStringOptionAppliesOnlyTheDeclaredBound)
+{
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::MinStringLength, int64_t(4), "");
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_FALSE(testableMgr->validateStringOption("abc", options));
+    EXPECT_TRUE(testableMgr->validateStringOption("abcdefghij", options));
+}
+
+TEST_F(ManagerTest, ValidateIntegerOptionAcceptsWhenNoUpperBoundDeclared)
+{
+    // No UpperBound means unconstrained above, not capped at zero.
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::LowerBound, int64_t(0), "");
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_TRUE(testableMgr->validateIntegerOption(int64_t(4096), options));
+}
+
+TEST_F(ManagerTest, ValidateIntegerOptionAcceptsWhenNoScalarIncrementDeclared)
+{
+    // No ScalarIncrement means no grid to sit on, not reject everything.
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::LowerBound, int64_t(0), "");
+    options.emplace_back(BoundType::UpperBound, int64_t(100), "");
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_TRUE(testableMgr->validateIntegerOption(int64_t(37), options));
+}
+
+TEST_F(ManagerTest, ValidateIntegerOptionSkipsGridWithNoLowerBound)
+{
+    // With no LowerBound there is no declared grid origin, so the increment
+    // must not be measured from an assumed zero.
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::UpperBound, int64_t(100), "");
+    options.emplace_back(BoundType::ScalarIncrement, int64_t(10), "");
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_TRUE(testableMgr->validateIntegerOption(int64_t(37), options));
+}
+
+TEST_F(ManagerTest, ValidateIntegerOptionAcceptsWithNoBoundsDeclared)
+{
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+
+    manager.reset();
+    auto testableMgr = std::make_unique<TestableManager>(*objServer, systemBus,
+                                                         persistPath.string());
+    EXPECT_TRUE(testableMgr->validateIntegerOption(int64_t(-7), options));
+    EXPECT_TRUE(testableMgr->validateIntegerOption(int64_t(9999), options));
+}
+
+TEST_F(ManagerTest, PendingAttributesAcceptsWritableAttribute)
+{
+    Manager::BaseTable table;
+    std::vector<
+        std::tuple<BoundType, std::variant<int64_t, std::string>, std::string>>
+        options;
+    options.emplace_back(BoundType::MinStringLength, int64_t(0), "");
+    options.emplace_back(BoundType::MaxStringLength, int64_t(100), "");
+    table["WritableAttribute"] = std::make_tuple(
+        AttributeType::String, false, "DisplayName", "Description", "MenuPath",
+        std::variant<int64_t, std::string>(std::string("Current")),
+        std::variant<int64_t, std::string>(std::string("Default")), options);
+    manager->baseBIOSTable(table);
+
+    Manager::PendingAttributes pending;
+    pending["WritableAttribute"] = std::make_tuple(
+        AttributeType::String,
+        std::variant<int64_t, std::string>(std::string("NewValue")));
+
+    EXPECT_NO_THROW(manager->pendingAttributes(pending));
 }
 
 } // namespace bios_config::test

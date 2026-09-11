@@ -197,17 +197,23 @@ bool Manager::validateStringOption(
     const std::vector<std::tuple<BoundType, std::variant<int64_t, std::string>,
                                  std::string>>& options)
 {
+    bool hasMinStringLength = false;
+    bool hasMaxStringLength = false;
     size_t minStringLength = 0;
     size_t maxStringLength = 0;
     for (const auto& stringOptions : options)
     {
         if (BoundType::MinStringLength == std::get<0>(stringOptions))
         {
-            minStringLength = std::get<int64_t>(std::get<1>(stringOptions));
+            minStringLength = static_cast<size_t>(
+                std::get<int64_t>(std::get<1>(stringOptions)));
+            hasMinStringLength = true;
         }
         else if (BoundType::MaxStringLength == std::get<0>(stringOptions))
         {
-            maxStringLength = std::get<int64_t>(std::get<1>(stringOptions));
+            maxStringLength = static_cast<size_t>(
+                std::get<int64_t>(std::get<1>(stringOptions)));
+            hasMaxStringLength = true;
         }
         else
         {
@@ -215,8 +221,8 @@ bool Manager::validateStringOption(
         }
     }
 
-    if (attrValue.length() < minStringLength ||
-        attrValue.length() > maxStringLength)
+    if ((hasMinStringLength && attrValue.length() < minStringLength) ||
+        (hasMaxStringLength && attrValue.length() > maxStringLength))
     {
         lg2::error(
             "{ATTRVALUE} Length is out of range, bound is invalid, maxStringLength = {MAXLEN}, minStringLength = {MINLEN}",
@@ -233,6 +239,8 @@ bool Manager::validateIntegerOption(
     const std::vector<std::tuple<BoundType, std::variant<int64_t, std::string>,
                                  std::string>>& options)
 {
+    bool hasLowerBound = false;
+    bool hasUpperBound = false;
     int64_t lowerBound = 0;
     int64_t upperBound = 0;
     int64_t scalarIncrement = 0;
@@ -242,10 +250,12 @@ bool Manager::validateIntegerOption(
         if (BoundType::LowerBound == std::get<0>(integerOptions))
         {
             lowerBound = std::get<int64_t>(std::get<1>(integerOptions));
+            hasLowerBound = true;
         }
         else if (BoundType::UpperBound == std::get<0>(integerOptions))
         {
             upperBound = std::get<int64_t>(std::get<1>(integerOptions));
+            hasUpperBound = true;
         }
         else if (BoundType::ScalarIncrement == std::get<0>(integerOptions))
         {
@@ -253,20 +263,30 @@ bool Manager::validateIntegerOption(
         }
     }
 
-    if ((attrValue < lowerBound) || (attrValue > upperBound))
+    if ((hasLowerBound && attrValue < lowerBound) ||
+        (hasUpperBound && attrValue > upperBound))
     {
         lg2::error("Integer, bound is invalid");
         return false;
     }
 
-    if (scalarIncrement == 0 ||
-        ((std::abs(attrValue - lowerBound)) % scalarIncrement) != 0)
+    if (hasUpperBound && attrValue == upperBound)
     {
-        lg2::error(
-            "((std::abs({ATTR_VALUE} - {LOWER_BOUND})) % {SCALAR_INCREMENT}) != 0",
-            "ATTR_VALUE", attrValue, "LOWER_BOUND", lowerBound,
-            "SCALAR_INCREMENT", scalarIncrement);
-        return false;
+        return true;
+    }
+
+    if (hasLowerBound && scalarIncrement > 0)
+    {
+        uint64_t distance = static_cast<uint64_t>(attrValue) -
+                            static_cast<uint64_t>(lowerBound);
+        if ((distance % static_cast<uint64_t>(scalarIncrement)) != 0)
+        {
+            lg2::error(
+                "{ATTR_VALUE} is not {LOWER_BOUND} plus a multiple of {SCALAR_INCREMENT}",
+                "ATTR_VALUE", attrValue, "LOWER_BOUND", lowerBound,
+                "SCALAR_INCREMENT", scalarIncrement);
+            return false;
+        }
     }
 
     return true;
@@ -283,19 +303,15 @@ Manager::PendingAttributes Manager::pendingAttributes(PendingAttributes value)
 
     // Validate all the BIOS attributes before setting PendingAttributes
     BaseTable biosTable = Base::baseBIOSTable();
-    for (auto it = value.begin(); it != value.end();)
+    for (const auto& pair : value)
     {
-        auto tIter = biosTable.find(it->first);
+        auto tIter = biosTable.find(pair.first);
         if (tIter != biosTable.end() &&
             std::get<static_cast<uint8_t>(Index::readOnly)>(tIter->second))
         {
-            lg2::error("Ignoring write to read-only BIOS attribute {ATTR}",
-                       "ATTR", it->first);
-            it = value.erase(it);
-        }
-        else
-        {
-            ++it;
+            lg2::error("BIOS attribute {ATTR} is read-only", "ATTR",
+                       pair.first);
+            throw AttributeReadOnly();
         }
     }
     for (const auto& pair : value)

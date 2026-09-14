@@ -151,10 +151,6 @@ void Password::verifyPassword(std::string userName, std::string currentPassword,
                               std::string newPassword,
                               nlohmann::json& outSeedJson)
 {
-    if (newPassword.empty() || newPassword.length() > maxPasswordLen)
-    {
-        throw InvalidCurrentPassword();
-    }
     if (fs::exists(seedFile.c_str()))
     {
         std::array<uint8_t, maxHashSize> orgUsrPwdHash;
@@ -224,11 +220,6 @@ void Password::changePassword(std::string userName, std::string currentPassword,
             throw InternalFailure();
         }
         failedAttempts = 0;
-    }
-
-    if (newPassword.empty() || newPassword.length() > maxPasswordLen)
-    {
-        throw InvalidCurrentPassword();
     }
 
     // Reuse the JSON verified above instead of re-reading the seed file, which

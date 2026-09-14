@@ -1276,48 +1276,59 @@ TEST_F(PasswordTest, ChangePasswordAllowsEmptyCurrentWhenUnprovisioned)
     EXPECT_NE(adminAfter, pad64(emptyHash));
 }
 
-TEST_F(PasswordTest, ChangePasswordRejectsEmptyNewPassword)
+TEST_F(PasswordTest, ChangePasswordAllowsEmptyNewPasswordToClear)
 {
-    const std::vector<uint8_t> seed32(32, 0x12);
-    createSeedFile64(seedPath, "SHA256", std::vector<uint8_t>(64, 0x00),
-                     std::vector<uint8_t>(64, 0x00), seed32);
-    password.reset();
-    auto pwd = std::make_unique<Password>(*objServer, systemBus,
-                                          seedPath.parent_path().string());
-    EXPECT_THROW(pwd->changePassword("AdminPassword", "current", ""),
-                 InvalidCurrentPassword);
-}
-
-TEST_F(PasswordTest, ChangePasswordRejectsOversizedNewPassword)
-{
-    const std::vector<uint8_t> seed32(32, 0x13);
-    createSeedFile64(seedPath, "SHA256", std::vector<uint8_t>(64, 0x00),
-                     std::vector<uint8_t>(64, 0x00), seed32);
-    password.reset();
-    auto pwd = std::make_unique<Password>(*objServer, systemBus,
-                                          seedPath.parent_path().string());
-    const std::string tooLong(maxPasswordLen + 1, 'x');
-    EXPECT_THROW(pwd->changePassword("AdminPassword", "current", tooLong),
-                 InvalidCurrentPassword);
-}
-
-TEST_F(PasswordTest, VerifyPasswordRejectsEmptyAndOversizedPasswords)
-{
+    const std::string configured = "configuredPwd";
     const std::vector<uint8_t> seed32(32, 0x14);
+    const auto configuredHash = computePbkdf2Sha256(configured, seed32);
+    const auto emptyHash = computePbkdf2Sha256("", seed32);
     createSeedFile64(seedPath, "SHA256", std::vector<uint8_t>(64, 0x00),
-                     std::vector<uint8_t>(64, 0x00), seed32);
+                     pad64(configuredHash), seed32);
     password.reset();
-    auto testablePwd = std::make_unique<TestablePassword>(
-        *objServer, systemBus, seedPath.parent_path().string());
+    auto pwd = std::make_unique<Password>(*objServer, systemBus,
+                                          seedPath.parent_path().string());
 
-    EXPECT_THROW(testablePwd->verifyPassword("AdminPassword", "", "newPwd"),
-                 InvalidCurrentPassword);
-    EXPECT_THROW(testablePwd->verifyPassword("AdminPassword", "current", ""),
-                 InvalidCurrentPassword);
-    const std::string tooLong(maxPasswordLen + 1, 'y');
-    EXPECT_THROW(
-        testablePwd->verifyPassword("AdminPassword", "current", tooLong),
-        InvalidCurrentPassword);
+    // Clearing the BIOS password is a change to the empty password, which is
+    // stored as the hash of "" exactly like an unprovisioned password.
+    EXPECT_NO_THROW(pwd->changePassword("AdminPassword", configured, ""));
+    {
+        std::ifstream ifs(seedPath);
+        nlohmann::json readBack = nlohmann::json::parse(ifs);
+        EXPECT_TRUE(readBack["IsAdminPwdChanged"].get<bool>());
+        std::vector<uint8_t> adminAfter = readBack["AdminPwdHash"];
+        EXPECT_EQ(adminAfter, pad64(emptyHash));
+    }
+
+    // The cleared password is the credential for the next change.
+    const std::string reprovisioned = "reprovisionedPwd";
+    EXPECT_NO_THROW(pwd->changePassword("AdminPassword", "", reprovisioned));
+    {
+        std::ifstream ifs(seedPath);
+        nlohmann::json readBack = nlohmann::json::parse(ifs);
+        std::vector<uint8_t> adminAfter = readBack["AdminPwdHash"];
+        EXPECT_EQ(adminAfter,
+                  pad64(computePbkdf2Sha256(reprovisioned, seed32)));
+    }
+}
+
+TEST_F(PasswordTest, ChangePasswordAcceptsLongNewPassword)
+{
+    const std::string configured = "configuredPwd";
+    const std::vector<uint8_t> seed32(32, 0x15);
+    createSeedFile64(seedPath, "SHA256", std::vector<uint8_t>(64, 0x00),
+                     pad64(computePbkdf2Sha256(configured, seed32)), seed32);
+    password.reset();
+    auto pwd = std::make_unique<Password>(*objServer, systemBus,
+                                          seedPath.parent_path().string());
+
+    // No length limit is enforced here; the daemon stores only the hash.
+    const std::string longPwd(64, 'p');
+    EXPECT_NO_THROW(pwd->changePassword("AdminPassword", configured, longPwd));
+
+    std::ifstream ifs(seedPath);
+    nlohmann::json readBack = nlohmann::json::parse(ifs);
+    std::vector<uint8_t> adminAfter = readBack["AdminPwdHash"];
+    EXPECT_EQ(adminAfter, pad64(computePbkdf2Sha256(longPwd, seed32)));
 }
 
 TEST_F(PasswordTest, ChangePasswordLocksOutAfterRepeatedFailures)

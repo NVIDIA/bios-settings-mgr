@@ -12,3 +12,9 @@ option(
     value: 'disabled',
     description: 'Enable BIOS SecureBoot configuration. The UEFI Secureboot information is obtained via Redfish Host Interface',
 )
+option(
+    'bios-password-pam',
+    type: 'feature',
+    value: 'disabled',
+    description: 'BIOS password handled by PAM (bmcweb) and nvidia-ipmi-oem; this daemon only owns and persists PasswordInitialized and PasswordSync on the Password interface. Replaces the built-in hash verification and ChangePassword handling.',
+)

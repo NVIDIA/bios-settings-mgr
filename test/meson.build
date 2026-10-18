@@ -66,16 +66,18 @@ if gtest_dep.found() and gmock_dep.found()
         dependency('phosphor-logging'),
         dependency('sdbusplus'),
         dependency('libsystemd'),
-        dependency('openssl'),
         dependency('nlohmann_json', include_type: 'system'),
         cereal,
         liburing,
     ]
+    if not bios_password_pam
+        test_deps += dependency('openssl')
+    endif
 
     common_sources = [
         '../src/manager.cpp',
         '../src/manager_serialize.cpp',
-        '../src/password.cpp',
+        bios_password_pam ? '../src/password_pam.cpp' : '../src/password.cpp',
         '../src/rfutility.cpp',
         '../src/boot_option.cpp',
         '../src/bootvalidflag.cpp',
@@ -85,14 +87,17 @@ if gtest_dep.found() and gmock_dep.found()
     tests = [
         'manager_test',
         'allocation_failure_test',
-        'password_test',
-        'password_openssl_failure_test',
         'boot_option_test',
         'manager_serialize_test',
         'rfutility_test',
         'secureboot_test',
         'bootvalidflag_test',
     ]
+    if bios_password_pam
+        tests += ['password_pam_test']
+    else
+        tests += ['password_test', 'password_openssl_failure_test']
+    endif
 
     foreach t : tests
         exe_sources = [t + '.cpp'] + common_sources

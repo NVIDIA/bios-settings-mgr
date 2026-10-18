@@ -2,7 +2,11 @@
 #include "common.hpp"
 #include "manager.hpp"
 #include "manager_serialize.hpp"
+#ifdef BIOS_PASSWORD_PAM
+#include "password_pam.hpp"
+#else
 #include "password.hpp"
+#endif
 #include "rfutility.hpp"
 #include "secureboot.hpp"
 
@@ -237,6 +241,7 @@ class TestableBootValidFlag : public bios_config_valid::BootValidFlag
     using BootValidFlag::setDbusProperty;
 };
 
+#ifndef BIOS_PASSWORD_PAM
 class TestablePassword : public bios_config_pwd::Password
 {
   public:
@@ -256,6 +261,7 @@ class TestablePassword : public bios_config_pwd::Password
                                   hashAlgo, discarded);
     }
 };
+#endif // !BIOS_PASSWORD_PAM
 
 TEST_F(AllocationFailureTest, RedfishEventAllocationFailures)
 {
@@ -345,6 +351,25 @@ TEST_F(AllocationFailureTest, ManagerSerializationAllocationFailures)
     SUCCEED();
 }
 
+#ifdef BIOS_PASSWORD_PAM
+TEST_F(AllocationFailureTest, PasswordPropertySetAllocationFailures)
+{
+    const auto passwordDir = tempDir / "password_alloc";
+    std::filesystem::create_directories(passwordDir);
+
+    auto password = std::make_unique<bios_config_pwd::Password>(
+        *objServer, systemBus, passwordDir.string());
+    for (int failAt = 0; failAt < 39; ++failAt)
+    {
+        runWithAllocationFailure(failAt, [&] {
+            password->passwordInitialized((failAt % 2) == 0);
+            password->passwordSync((failAt % 2) == 0);
+        });
+    }
+
+    SUCCEED();
+}
+#else
 TEST_F(AllocationFailureTest, PasswordGetParamAllocationFailures)
 {
     const auto passwordDir = tempDir / "password_alloc";
@@ -377,6 +402,7 @@ TEST_F(AllocationFailureTest, PasswordGetParamAllocationFailures)
 
     SUCCEED();
 }
+#endif // BIOS_PASSWORD_PAM
 
 TEST_F(AllocationFailureTest, SecureBootAllocationFailures)
 {

@@ -17,13 +17,19 @@
 #include "bootvalidflag.hpp"
 #include "config.hpp"
 #include "manager.hpp"
+#ifdef BIOS_PASSWORD_PAM
+#include "password_pam.hpp"
+#else
 #include "password.hpp"
+#endif
 #include "secureboot.hpp"
 
 #include <boost/asio.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/asio/object_server.hpp>
+
+#include <filesystem>
 
 PHOSPHOR_LOG2_USING;
 
@@ -59,6 +65,11 @@ int main(int argc, char** argv)
      * Interface : xyz.openbmc_project.BIOSConfig.Password
      */
     bios_config_pwd::Password password(objectServer, systemBus, persistPath);
+#ifdef BIOS_PASSWORD_PAM
+    bios_config_pwd::deserializePasswordState(
+        std::filesystem::path(persistPath) / bios_config_pwd::passwordStateFile,
+        password);
+#endif
 
     bios_config_valid::BootValidFlag bootValifFlag(systemBus, io);
 #ifdef ENABLE_BIOS_SECUREBOOT

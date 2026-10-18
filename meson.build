@@ -22,6 +22,11 @@ if (get_option('enable-bios-secureboot').allowed())
     add_project_arguments('-DENABLE_BIOS_SECUREBOOT', language: 'cpp')
 endif
 
+bios_password_pam = get_option('bios-password-pam').allowed()
+if (bios_password_pam)
+    add_project_arguments('-DBIOS_PASSWORD_PAM', language: 'cpp')
+endif
+
 if (get_option('clear-pending-bootorder-on-update').allowed())
     add_project_arguments('-DCLEAR_PENDING_BOOTORDER_ON_UPDATE', language: 'cpp')
 endif
@@ -45,9 +50,11 @@ deps = [
     dependency('phosphor-logging'),
     dependency('sdbusplus'),
     dependency('libsystemd'),
-    dependency('openssl'),
     dependency('nlohmann_json', include_type: 'system'),
 ]
+if not bios_password_pam
+    deps += dependency('openssl')
+endif
 
 cereal = dependency('cereal', required: false)
 cpp = meson.get_compiler('cpp')
@@ -77,7 +84,7 @@ src_files = [
     'src/main.cpp',
     'src/manager.cpp',
     'src/manager_serialize.cpp',
-    'src/password.cpp',
+    bios_password_pam ? 'src/password_pam.cpp' : 'src/password.cpp',
     'src/rfutility.cpp',
     'src/boot_option.cpp',
     'src/bootvalidflag.cpp',

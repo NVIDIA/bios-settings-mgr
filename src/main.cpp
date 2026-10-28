@@ -16,6 +16,7 @@
 
 #include "bootvalidflag.hpp"
 #include "config.hpp"
+#include "host_interface.hpp"
 #include "manager.hpp"
 #ifdef BIOS_PASSWORD_PAM
 #include "password_pam.hpp"
@@ -30,6 +31,7 @@
 #include <sdbusplus/asio/object_server.hpp>
 
 #include <filesystem>
+#include <functional>
 
 PHOSPHOR_LOG2_USING;
 
@@ -72,6 +74,13 @@ int main(int argc, char** argv)
 #endif
 
     bios_config_valid::BootValidFlag bootValifFlag(systemBus, io);
+
+    bios_config::HostInterface hostInterface(
+        systemBus,
+        std::bind_front(bios_config::rearmCredentialBootstrap,
+                        std::ref(manager)),
+        std::bind_front(bios_config::redfishHostInterfaceSettingOf,
+                        std::ref(manager)));
 #ifdef ENABLE_BIOS_SECUREBOOT
     /**
      * SecureBoot class is responsible for handling methods and signals under

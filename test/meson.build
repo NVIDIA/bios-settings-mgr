@@ -81,6 +81,7 @@ if gtest_dep.found() and gmock_dep.found()
         '../src/rfutility.cpp',
         '../src/boot_option.cpp',
         '../src/bootvalidflag.cpp',
+        '../src/host_interface.cpp',
         '../src/secureboot.cpp',
     ]
 
@@ -92,6 +93,7 @@ if gtest_dep.found() and gmock_dep.found()
         'rfutility_test',
         'secureboot_test',
         'bootvalidflag_test',
+        'host_interface_test',
     ]
     if bios_password_pam
         tests += ['password_pam_test']

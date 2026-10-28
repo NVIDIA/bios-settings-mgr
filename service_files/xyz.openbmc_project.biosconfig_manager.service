@@ -1,5 +1,7 @@
 [Unit]
 Description= BIOS Config Manager - For Remote BIOS configuration update
+Wants=xyz.openbmc_project.Network.service
+After=xyz.openbmc_project.Network.service
 
 [Service]
 Restart=always

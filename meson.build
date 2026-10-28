@@ -88,6 +88,7 @@ src_files = [
     'src/rfutility.cpp',
     'src/boot_option.cpp',
     'src/bootvalidflag.cpp',
+    'src/host_interface.cpp',
     'src/secureboot.cpp',
 ]
 

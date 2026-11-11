@@ -110,6 +110,22 @@ if gtest_dep.found() and gmock_dep.found()
         )
     endforeach
 
+    reset_bios_test = executable(
+        'reset_bios_test',
+        ['reset_bios_test.cpp'] + common_sources,
+        include_directories: [root_inc, test_inc],
+        dependencies: test_deps + [
+            dependency('boost', modules: ['context', 'coroutine']),
+        ],
+        cpp_args: boost_args,
+    )
+    test(
+        'reset_bios_test',
+        reset_bios_test,
+        protocol: 'gtest',
+        is_parallel: false,
+    )
+
     if 'address' in get_option('b_sanitize')
         add_test_setup(
             'valgrind',

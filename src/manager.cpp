@@ -30,12 +30,30 @@
 
 #include <regex>
 #include <utility>
+#include <variant>
 
 namespace bios_config
 {
 
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 using namespace sdbusplus::xyz::openbmc_project::BIOSConfig::Common::Error;
+
+constexpr auto biosEroTSpiService = "com.Nvidia.BiosEroTSpi";
+constexpr auto clearNVRAMPath = "/xyz/openbmc_project/bios/clear_nvram";
+constexpr auto clearNVRAMInterface = "com.nvidia.BIOS.ClearNVRAM";
+constexpr auto clearNVRAMMethod = "Clear";
+constexpr uint64_t clearNVRAMTimeoutUsec = 60'000'000;
+constexpr auto dbusService = "org.freedesktop.DBus";
+constexpr auto dbusPath = "/org/freedesktop/DBus";
+constexpr auto dbusInterface = "org.freedesktop.DBus";
+constexpr auto nameHasOwnerMethod = "NameHasOwner";
+constexpr auto settingsService = "xyz.openbmc_project.Settings";
+constexpr auto bootSettingsPath = "/xyz/openbmc_project/control/host0/boot";
+constexpr auto bootFlagsInterface = "xyz.openbmc_project.Control.Boot.Flags";
+constexpr auto cmosClearProperty = "CMOSClear";
+constexpr auto enableInterface = "xyz.openbmc_project.Object.Enable";
+constexpr auto enabledProperty = "Enabled";
+constexpr auto propertiesInterface = "org.freedesktop.DBus.Properties";
 
 void Manager::setAttribute(AttributeName attribute, AttributeValue value)
 {
@@ -155,6 +173,17 @@ Manager::ResetFlag Manager::resetBIOSSettings(Manager::ResetFlag value)
     std::string path = objectPath;
     path += "/bios/settings";
     parsePropertyValueAndSendEvent("ResetBIOSSettings", resetFlagString, path);
+
+    if (resetFlag == Manager::ResetFlag::FactoryDefaults)
+    {
+        systemBus->async_method_call(
+            [this](boost::system::error_code ec, bool hasOwner) {
+                handleBiosNvramServiceCheck(ec, hasOwner);
+            },
+            dbusService, dbusPath, dbusInterface, nameHasOwnerMethod,
+            biosEroTSpiService);
+    }
+
     return resetFlag;
 }
 
@@ -590,6 +619,110 @@ Manager::ModeType Manager::mode(Manager::ModeType value)
     std::string modeType = convertModeTypeToString(value);
     parsePropertyValueAndSendEvent("SecureBootMode", modeType, objectPath);
     return newValue;
+}
+
+void Manager::handleBiosNvramServiceCheck(boost::system::error_code ec,
+                                          bool hasOwner)
+{
+    if (ec)
+    {
+        lg2::error("Failed to check BIOS NVRAM clear service: {ERROR}", "ERROR",
+                   ec.message());
+        return;
+    }
+    if (hasOwner)
+    {
+        requestBiosNvramClear();
+    }
+}
+
+void Manager::requestBiosNvramClear()
+{
+    systemBus->async_method_call_timed(
+        [this](boost::system::error_code ec) {
+            if (ec)
+            {
+                lg2::error("BIOS NVRAM clear failed: {ERROR}", "ERROR",
+                           ec.message());
+                return;
+            }
+            clearResetBiosTriggers();
+        },
+        biosEroTSpiService, clearNVRAMPath, clearNVRAMInterface,
+        clearNVRAMMethod, clearNVRAMTimeoutUsec);
+}
+
+void Manager::clearResetBiosTriggers()
+{
+    struct CleanupState
+    {
+        size_t pending = 3;
+        bool succeeded = true;
+    };
+    auto state = std::make_shared<CleanupState>();
+    ResetTriggerCleanupCompletion completion = [state](bool succeeded) {
+        state->succeeded = state->succeeded && succeeded;
+        if (--state->pending == 0 && state->succeeded)
+        {
+            lg2::info(
+                "BIOS NVRAM clear completed; boot-time reset triggers cleared");
+        }
+    };
+
+    clearCMOSClear(completion);
+    clearBootOverride(completion);
+    clearResetBIOSSettings(std::move(completion));
+}
+
+void Manager::clearCMOSClear(ResetTriggerCleanupCompletion completion)
+{
+    systemBus->async_method_call(
+        [completion = std::move(completion)](
+            boost::system::error_code ec) mutable {
+            if (ec)
+            {
+                lg2::error("Failed to clear CMOSClear: {ERROR}", "ERROR",
+                           ec.message());
+                completion(false);
+                return;
+            }
+            completion(true);
+        },
+        settingsService, bootSettingsPath, propertiesInterface, "Set",
+        bootFlagsInterface, cmosClearProperty, std::variant<bool>(false));
+}
+
+void Manager::clearBootOverride(ResetTriggerCleanupCompletion completion)
+{
+    systemBus->async_method_call(
+        [completion = std::move(completion)](
+            boost::system::error_code ec) mutable {
+            if (ec)
+            {
+                lg2::error("Failed to clear boot override: {ERROR}", "ERROR",
+                           ec.message());
+                completion(false);
+                return;
+            }
+            completion(true);
+        },
+        settingsService, bootSettingsPath, propertiesInterface, "Set",
+        enableInterface, enabledProperty, std::variant<bool>(false));
+}
+
+void Manager::clearResetBIOSSettings(ResetTriggerCleanupCompletion completion)
+{
+    try
+    {
+        resetBIOSSettings(Manager::ResetFlag::NoAction);
+        completion(true);
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to clear ResetBIOSSettings: {ERROR}", "ERROR",
+                   e.what());
+        completion(false);
+    }
 }
 
 } // namespace bios_config

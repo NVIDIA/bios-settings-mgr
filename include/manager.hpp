@@ -18,6 +18,7 @@
 
 #include "boot_option.hpp"
 
+#include <boost/system/error_code.hpp>
 #include <sdbusplus/asio/object_server.hpp>
 #include <sdbusplus/server.hpp>
 #include <xyz/openbmc_project/BIOSConfig/BootOrder/server.hpp>
@@ -27,6 +28,8 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <memory>
 #include <string>
 #define BIOS_CONFIG_VERSION_1 1
 // Version 1: Bios table type 1
@@ -251,8 +254,19 @@ class Manager : public Base
 
     void cacheAllAttributes(const BaseTable& baseTable);
 
+    using ResetTriggerCleanupCompletion = std::function<void(bool)>;
+
+    void requestBiosNvramClear();
+    void clearResetBiosTriggers();
+    void clearCMOSClear(ResetTriggerCleanupCompletion completion);
+    void clearBootOverride(ResetTriggerCleanupCompletion completion);
+    void clearResetBIOSSettings(ResetTriggerCleanupCompletion completion);
+
   protected:
     // Made protected to enable unit testing
+    void handleBiosNvramServiceCheck(boost::system::error_code ec,
+                                     bool hasOwner);
+
     std::map<std::string, std::unique_ptr<BootOptionDbus>> dbusBootOptions;
 
     bool validateEnumOption(

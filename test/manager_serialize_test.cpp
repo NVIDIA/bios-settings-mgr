@@ -751,4 +751,26 @@ TEST_F(ManagerSerializeTest, DeserializeQuarantinesCorruptFile)
     EXPECT_TRUE(std::filesystem::exists(corrupt));
 }
 
+TEST_F(ManagerSerializeTest, DeserializeHandlesQuarantineRenameFailure)
+{
+    {
+        std::ofstream f(serializePath, std::ios::binary);
+        const char bytes[] = {0x01, 0x02, 0x03, 0x04};
+        f.write(bytes, sizeof(bytes));
+    }
+
+    std::filesystem::path corrupt = serializePath;
+    corrupt += ".corrupt";
+    std::filesystem::create_directory(corrupt);
+    std::ofstream(corrupt / "keep").put('x');
+
+    manager.reset();
+    auto manager2 =
+        std::make_unique<Manager>(*objServer, systemBus, loadPath.string());
+    EXPECT_FALSE(deserialize(serializePath, *manager2));
+
+    EXPECT_TRUE(std::filesystem::exists(serializePath));
+    EXPECT_TRUE(std::filesystem::is_directory(corrupt));
+}
+
 } // namespace bios_config::test
